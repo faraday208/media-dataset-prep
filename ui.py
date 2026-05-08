@@ -1233,11 +1233,30 @@ def build_duplicate_tab():
                         "largest": "En büyük",
                         "smallest": "En küçük",
                         "highest_resolution": "En yüksek çözünürlük",
-                        "best": "Best (resolution + size)",
+                        "best": "Best (BPP-aware composite)",
                     },
                     label="Keep strategy (default)",
                     value="first",
                 ).props("dense outlined").classes("w-full")
+
+                default_zoom_select = ui.select(
+                    {
+                        "fit": "Fit (ekrana sığar)",
+                        "1.0": "100% (gerçek piksel)",
+                        "2.0": "200%",
+                        "0.5": "50%",
+                    },
+                    label="Lightbox başlangıç zoom",
+                    value="fit",
+                ).props("dense outlined").classes("w-full")
+
+                def _on_default_zoom_change(value: str):
+                    tab_state["default_zoom"] = (
+                        "fit" if value == "fit" else float(value)
+                    )
+                default_zoom_select.on_value_change(
+                    lambda e: _on_default_zoom_change(e.value)
+                )
 
                 action_select = ui.select(
                     {
@@ -1466,9 +1485,9 @@ def build_duplicate_tab():
                             ).props(f"flat dense {keep_btn_color} no-caps")
 
         def _open_lightbox(start_path: str):
-            """Tam ekran lightbox + carousel — ←/→ ile grup içinde gez, "Bunu tut"
-            ile keeper seç, hepsi tam ekranda. Native <img> + viewport units
-            (Quasar QImg padding-bottom hack'i atlatıldı, dikey/yatay sığıyor)."""
+            """Tam ekran lightbox + carousel + zoom — ←/→ ile grup içinde gez,
+            +/− ile zoom, 0=Fit, 1=100%, "Bunu tut" ile keeper seç. Native <img>
+            + viewport units (Quasar QImg padding-bottom hack'i atlatıldı)."""
             sr = tab_state["scan_result"]
             if sr is None or not sr.groups:
                 return
@@ -1479,20 +1498,23 @@ def build_duplicate_tab():
             start_idx = next(
                 (i for i, f in enumerate(files) if f["path"] == start_path), 0
             )
-            lb_state = {"idx": start_idx}
+            # zoom: 'fit' (default — ekrana sığar) veya float (1.0=100% natural pixel)
+            lb_state = {"idx": start_idx, "zoom": tab_state.get("default_zoom", "fit")}
 
             with ui.dialog().props("maximized") as dlg, ui.card().classes(
                 "w-full h-screen p-0 bg-black overflow-hidden"
             ):
+                # overflow-auto: zoom > fit'te scrollbar otomatik çıkar
                 with ui.column().classes(
-                    "w-full h-full items-center justify-center relative"
+                    "w-full h-full overflow-auto relative bg-black "
+                    "items-center justify-center"
                 ):
                     # Image holder — set_content ile güncelleniyor
                     img_html = ui.html("")
 
-                    # Üst overlay: filename + counter + keep + close
+                    # Üst overlay: filename + zoom kontrol + keep + close
                     with ui.row().classes(
-                        "absolute top-2 left-2 right-2 items-center gap-2 z-10"
+                        "absolute top-2 left-2 right-2 items-center gap-2 z-10 flex-wrap"
                     ):
                         title_label = ui.label("").classes(
                             "text-white text-sm bg-black/60 px-3 py-1 rounded font-mono"
@@ -1501,6 +1523,24 @@ def build_duplicate_tab():
                             "text-white text-xs bg-black/60 px-2 py-1 rounded"
                         )
                         ui.space()
+                        # Zoom kontrolleri
+                        with ui.row().classes(
+                            "items-center gap-1 bg-black/60 rounded px-1"
+                        ):
+                            ui.button(icon="remove").props(
+                                "flat dense color=white size=sm"
+                            ).tooltip("Zoom out (−)").on(
+                                "click", lambda: _zoom_step(-1)
+                            )
+                            zoom_btn = ui.button("Fit").props(
+                                "flat dense color=white size=sm no-caps"
+                            ).tooltip("Fit ↔ 100% (çift tıkla / 0 / 1)")
+                            zoom_btn.on("click", lambda: _zoom_toggle())
+                            ui.button(icon="add").props(
+                                "flat dense color=white size=sm"
+                            ).tooltip("Zoom in (+)").on(
+                                "click", lambda: _zoom_step(1)
+                            )
                         keeper_badge = ui.label("").classes(
                             "text-white text-xs px-3 py-1 rounded"
                         )
@@ -1524,7 +1564,7 @@ def build_duplicate_tab():
                             "absolute right-4 top-1/2 -translate-y-1/2 z-10 opacity-80"
                         ).on("click", lambda: _lb_step(1))
 
-                    # Alt overlay: dosya sayacı + nav hint
+                    # Alt overlay: dosya sayacı + klavye hint
                     with ui.row().classes(
                         "absolute bottom-2 left-1/2 -translate-x-1/2 "
                         "items-center gap-2 z-10"
@@ -1532,10 +1572,18 @@ def build_duplicate_tab():
                         counter_label = ui.label("").classes(
                             "text-white text-sm bg-black/60 px-3 py-1 rounded font-mono"
                         )
+                        hint_parts = []
                         if len(files) > 1:
-                            ui.label("← → / klavye okları").classes(
-                                "text-white text-xs bg-black/40 px-2 py-1 rounded"
-                            )
+                            hint_parts.append("← →")
+                        hint_parts.append("+ −")
+                        hint_parts.append("0=Fit")
+                        hint_parts.append("1=100%")
+                        ui.label(" · ".join(hint_parts)).classes(
+                            "text-white text-xs bg-black/40 px-2 py-1 rounded"
+                        )
+
+                    # Zoom step preset'leri (% cinsinden)
+                    ZOOM_LEVELS = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0]
 
                     def _render():
                         f = files[lb_state["idx"]]
@@ -1551,6 +1599,26 @@ def build_duplicate_tab():
                         if "distance" in f:
                             info_parts.append(f"d={f['distance']}")
                         info_label.set_text(" · ".join(info_parts))
+
+                        # Zoom — fit (ekrana sığar) veya natural × ratio (scrollable)
+                        z = lb_state["zoom"]
+                        if z == "fit" or not (w and h):
+                            img_style = (
+                                "max-width: 100vw; max-height: 100vh; "
+                                "width: auto; height: auto; "
+                                "object-fit: contain; display: block; margin: auto;"
+                            )
+                            zoom_btn.set_text("Fit")
+                        else:
+                            # natural × zoom — scrollable
+                            disp_w = int(w * z)
+                            disp_h = int(h * z)
+                            img_style = (
+                                f"width: {disp_w}px; height: {disp_h}px; "
+                                f"max-width: none; max-height: none; "
+                                f"display: block; margin: auto;"
+                            )
+                            zoom_btn.set_text(f"{int(z*100)}%")
 
                         # Keeper indicator
                         manual = tab_state["manual_keepers"].get(
@@ -1575,10 +1643,7 @@ def build_duplicate_tab():
                             f"{lb_state['idx'] + 1} / {len(files)}"
                         )
                         img_html.set_content(
-                            f'<img src="{url}" '
-                            f'style="max-width: 100vw; max-height: 100vh; '
-                            f'width: auto; height: auto; '
-                            f'object-fit: contain; display: block;">'
+                            f'<img src="{url}" style="{img_style}">'
                         )
 
                     def _lb_step(delta: int):
@@ -1589,6 +1654,37 @@ def build_duplicate_tab():
                         path = files[lb_state["idx"]]["path"]
                         _set_keeper(tab_state["current_group_idx"], path)
                         _render()  # badge + buton update
+
+                    def _zoom_step(delta: int):
+                        """+1 zoom in, −1 zoom out. Fit'tekiyse 1.0'a (100%)
+                        atlar; ZOOM_LEVELS preset'leri arasında step."""
+                        z = lb_state["zoom"]
+                        if z == "fit":
+                            # Fit'ten zoom in/out — 1.0'dan başla
+                            lb_state["zoom"] = 1.0 if delta > 0 else "fit"
+                        else:
+                            try:
+                                idx = ZOOM_LEVELS.index(z)
+                            except ValueError:
+                                # Listedeki en yakına yuvarla
+                                idx = min(
+                                    range(len(ZOOM_LEVELS)),
+                                    key=lambda i: abs(ZOOM_LEVELS[i] - z),
+                                )
+                            new_idx = max(0, min(len(ZOOM_LEVELS) - 1, idx + delta))
+                            lb_state["zoom"] = ZOOM_LEVELS[new_idx]
+                        _render()
+
+                    def _zoom_toggle():
+                        """Fit ↔ 100% toggle (zoom buton tıklaması)."""
+                        lb_state["zoom"] = (
+                            1.0 if lb_state["zoom"] == "fit" else "fit"
+                        )
+                        _render()
+
+                    def _zoom_set(value):
+                        lb_state["zoom"] = value
+                        _render()
 
                     keep_btn.on("click", _lb_keep)
 
@@ -1602,6 +1698,14 @@ def build_duplicate_tab():
                             _lb_step(1)
                         elif e.key.enter:
                             _lb_keep()
+                        elif str(e.key) in {"+", "="}:
+                            _zoom_step(1)
+                        elif str(e.key) == "-":
+                            _zoom_step(-1)
+                        elif str(e.key) == "0":
+                            _zoom_set("fit")
+                        elif str(e.key) == "1":
+                            _zoom_set(1.0)
 
                     keyboard = ui.keyboard(on_key=_on_key, active=True)
                     dlg.on("hide", lambda: setattr(keyboard, "active", False))
