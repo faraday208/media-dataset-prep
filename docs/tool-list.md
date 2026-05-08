@@ -78,8 +78,8 @@ Qwen3-VL-30B ile multi-pass captioning (5-pass: saç/yüz, vücut/poz, kıyafet,
 
 ---
 
-### 07 — golden-set-generator
-**GitHub:** https://github.com/faraday208/golden-set-generator
+### 07 — media-golden-set
+**GitHub:** https://github.com/faraday208/media-golden-set
 **Tip:** src + Gradio UI
 
 Pipeline'ın son aşaması — yarı-otomatik filtre + manuel cherry-pick. LoRA training öncesi ~100 mükemmel görsel seçimi için Gradio UI ile dataset review, batch label/star.

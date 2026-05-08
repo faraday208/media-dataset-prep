@@ -31,7 +31,7 @@ declare -A LOCAL_PATHS=(
   ["04-watermark"]="$LOCAL_BASE/watermark-detection"
   ["05-resize"]="$LOCAL_BASE/image-resizer"
   ["06-caption"]="$LOCAL_BASE/media-captioner"
-  ["07-golden-set"]="$LOCAL_BASE/golden-set-generator"
+  ["07-golden-set"]="$LOCAL_BASE/media-golden-set"
 )
 
 declare -A GITHUB_URLS=(
@@ -42,7 +42,7 @@ declare -A GITHUB_URLS=(
   ["04-watermark"]="https://github.com/faraday208/watermark-detection.git"
   ["05-resize"]="https://github.com/faraday208/image-resizer.git"
   ["06-caption"]="https://github.com/faraday208/media-captioner.git"
-  ["07-golden-set"]="https://github.com/faraday208/golden-set-generator.git"
+  ["07-golden-set"]="https://github.com/faraday208/media-golden-set.git"
 )
 
 echo "==============================================="

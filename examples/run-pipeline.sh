@@ -59,7 +59,7 @@ echo "Adım 6/7: media-captioner"
 echo "  cd $TOOLS_DIR/06-caption && python client/batch_client.py ..."
 echo ""
 
-echo "Adım 7/7: golden-set-generator"
+echo "Adım 7/7: media-golden-set"
 echo "  cd $TOOLS_DIR/07-golden-set && python src/universal_selector.py ..."
 echo ""
 
