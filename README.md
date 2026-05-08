@@ -28,7 +28,7 @@ Her tool ayrı GitHub repo'sunda yaşar. Bu repo:
 ```
 Ham görseller (raw input)
     ↓
-[00] Rename           Toplu dosya rename'i, tip-bazlı sıralı numaralandırma
+[00] Organize         Toplu rename + opsiyonel relocate (output-dir/move), tip-bazlı sıralı numaralandırma
     ↓
 [01] Validate         Format / bozukluk doğrulama
     ↓
@@ -53,7 +53,7 @@ Eğitime hazır dataset
 
 | # | Tool | Repo | Tip |
 |---|---|---|---|
-| 00 | **media-renamer** | [github](https://github.com/faraday208/media-renamer) | Library + CLI |
+| 00 | **media-organizer** | [github](https://github.com/faraday208/media-organizer) | Library + CLI |
 | 01 | **image-validator** | [github](https://github.com/faraday208/image-validator) | Library + CLI |
 | 02 | **duplicate-image-finder** | [github](https://github.com/faraday208/duplicate-image-finder) | Library + CLI |
 | 03 | **image-quality-checker** | [github](https://github.com/faraday208/image-quality-checker) | Library + CLI |
@@ -145,7 +145,7 @@ dataset-prep/
 │   └── check-tools.sh     # In-process import sağlık kontrolü
 │
 └── tools/                 # (gitignored) install-tools.sh ile dolar
-    ├── 00-rename/         # → media-renamer
+    ├── 00-organize/       # → media-organizer
     ├── 01-validate/       # → image-validator
     ├── 02-duplicate/      # → duplicate-image-finder
     └── ...
@@ -182,7 +182,7 @@ Her tool tam belgelenmiştir, kendi başına çalışır.
 
 ### Senaryo 2: Ürün katalog fotoğraflarını temizleme
 1. Drive dump'ından 5000 fotoğraf
-2. `media-renamer` ile düzenli isim ver
+2. `media-organizer` ile düzenli isim ver
 3. `tools/01-validate/` ile bozukları at
 4. `tools/04-watermark/` ile filigranları temizle
 5. `tools/05-resize/` ile standartlaştır
