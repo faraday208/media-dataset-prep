@@ -1,8 +1,13 @@
 """Meta repo integration testleri için fixture'lar."""
 import os
+import sys
 import time
+from pathlib import Path
 
 import pytest
+
+# Repo root'taki ui.py'yi import edebilmek için path'e ekle
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def _touch(path, mtime):

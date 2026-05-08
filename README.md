@@ -105,6 +105,18 @@ make test                  # Örnek pipeline (examples/sample-dataset/ üzerinde
 make check                 # Tool'ların API health check
 ```
 
+### 6. UI (opsiyonel — human-in-the-loop review)
+```bash
+uv sync --group ui                    # NiceGUI + bağımlılıkları kur
+uv run --group ui python ui.py        # http://localhost:8200
+# Farklı port:  UI_PORT=9000 uv run --group ui python ui.py
+```
+
+UI pipeline'ın 8 adımına sekmeler halinde erişim sunar; v0.1'de **00 Organize**
+tam wire'lı, diğer step'ler stub (tool-spesifik UI'lar tool yapıldıkça eklenir).
+Asıl değer downstream review (caption, dedupe pair'leri, golden-set seçimi)
+adımlarında.
+
 ---
 
 ## 🏗️ Mimari Karar — Niçin Polyrepo + Meta?

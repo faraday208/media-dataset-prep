@@ -27,6 +27,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+ui = [
+    "nicegui>=2.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
