@@ -31,9 +31,19 @@ sırayla uyumlandırılacak.
     └── test_*.py               # >= 30 test (unit + e2e)
 ```
 
-Tek dosya OK (organizer pattern'i: `media_organizer.py`). `src/` paketi
-büyüyen tool'larda (validator pattern'i). Hangi olursa **public API
-import yolu kararlı** olmalı.
+### Paket adı standardı
+
+| Tool boyutu | Pattern | Örnek |
+|---|---|---|
+| Tek modül (küçük) | Tool adıyla aynı `.py` | `media_organizer.py` → `import media_organizer` |
+| Paket (büyük) | `<tool_short>_core/` | `validator_core/`, `dedup_core/`, `quality_core/` |
+
+**❌ Yasak:** Generic `src/`, `core/` — UI tools/* sys.path'e ekleyince
+çakışma yaratır (iki tool aynı `import core` deyince hangisinin
+yükleneceği iterdir sırasına bağlı, deterministik değil).
+
+Public API import yolu kararlı olmalı. Örn. `from validator_core import
+FileValidator` — alt klasörleri ezberletme.
 
 ---
 
@@ -269,6 +279,7 @@ Mevcut tool'ların doc'tan sapmaları:
 | organizer | Rapor field'ları (`mode`, `total_files`, `renames` vs `tool`, `actions`) | v1.0'a kadar tolerans; v1.0'da §4'e uyum |
 | organizer | argparse yerine manuel `sys.argv` parsing | v1.0 refactor'da argparse'a geçiş |
 | validator | `path` field'ı `FileValidationResult`'ta opt (back-compat) | Kalıcı — eski raporlar için fallback gerekli |
+| validator | Paket içinde `validators/` alt klasörü | OK — file_validator + ileride başka validator'lar (örn. video) için yer |
 
 Yeni sapma eklenmeden önce **bu doc'a not düşülür**.
 

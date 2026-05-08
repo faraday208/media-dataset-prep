@@ -19,12 +19,12 @@ TOOLS_VALIDATE = REPO_ROOT / "tools" / "01-validate"
 # ---------- Workspace integrity ----------
 
 def test_validate_tool_is_present_at_workspace_path():
-    """tools/01-validate/ var ve içinde run.py + src/scanner.py erişilebilir."""
+    """tools/01-validate/ var ve içinde run.py + validator_core/scanner.py erişilebilir."""
     assert TOOLS_VALIDATE.exists(), \
         f"{TOOLS_VALIDATE} yok — `scripts/install-tools.sh` çalıştırılmadı mı?"
     assert (TOOLS_VALIDATE / "run.py").is_file()
-    assert (TOOLS_VALIDATE / "src" / "scanner.py").is_file()
-    assert (TOOLS_VALIDATE / "src" / "validators" / "file_validator.py").is_file()
+    assert (TOOLS_VALIDATE / "validator_core" / "scanner.py").is_file()
+    assert (TOOLS_VALIDATE / "validator_core" / "validators" / "file_validator.py").is_file()
 
 
 def test_validate_tool_pyproject_declares_expected_name():
@@ -45,7 +45,7 @@ def test_validator_importable_via_workspace():
     """uv workspace ile in-process kullanım çalışır."""
     sys.path.insert(0, str(TOOLS_VALIDATE))
     try:
-        from src import (  # noqa: F401
+        from validator_core import (  # noqa: F401
             FileValidator,
             collect_images,
             apply_action,

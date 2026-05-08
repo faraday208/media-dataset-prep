@@ -29,8 +29,8 @@ for tool_path in TOOLS_DIR.iterdir():
 
 import media_organizer  # noqa: E402
 # media-validator (tools/01-validate) — alias'lı import (organizer ile collision'sız)
-from src.validators.file_validator import FileValidator  # noqa: E402
-from src.scanner import (  # noqa: E402
+from validator_core.validators.file_validator import FileValidator  # noqa: E402
+from validator_core.scanner import (  # noqa: E402
     collect_images as validate_collect_images,
     apply_action as validate_apply_action,
     undo_from_report as validate_undo_from_report,
@@ -39,7 +39,7 @@ from src.scanner import (  # noqa: E402
 )
 # media-deduplicator (tools/02-duplicate) — `core` paketi adı validator'ın `src` ile
 # çakışmıyor (validator src/, deduplicator core/). Direkt import OK.
-from core import (  # noqa: E402
+from dedup_core import (  # noqa: E402
     Hasher as DupHasher,
     apply_action as dedup_apply_action,
     find_exact_duplicates,
