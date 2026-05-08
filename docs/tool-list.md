@@ -30,8 +30,7 @@ Validate (01), duplicate (02), caption (06) gibi adımlar düzenli isimlendirme 
 
 ### 01 — image-validator
 **GitHub:** https://github.com/faraday208/image-validator
-**Tip:** REST API + CLI
-**Port:** 8100
+**Tip:** Python kütüphanesi + CLI
 
 Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk veya yanlış format dosyalar buradan geri döner.
 
@@ -45,8 +44,7 @@ Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk 
 
 ### 02 — duplicate-image-finder
 **GitHub:** https://github.com/faraday208/duplicate-image-finder
-**Tip:** REST API + CLI + Gradio UI
-**Port:** 8001
+**Tip:** Python kütüphanesi + CLI
 
 İki tip kopya tespiti:
 - **Birebir (exact):** MD5 hash — saniyeler içinde binlerce dosya
@@ -56,14 +54,13 @@ Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk 
 - Konfigüre edilebilir benzerlik eşiği (0-64)
 - keep_strategy: largest / smallest / first / best
 - Multi-threaded (ThreadPoolExecutor)
-- Gradio dashboard ile manuel review
+- Manuel review meta'nın Gradio UI'ında yapılır
 
 ---
 
 ### 03 — image-quality-checker
 **GitHub:** https://github.com/faraday208/image-quality-checker
-**Tip:** REST API + Streamlit UI
-**Port:** 8200
+**Tip:** Python kütüphanesi + CLI
 
 Görsel kalite metriklerini ölçer.
 
@@ -74,7 +71,7 @@ Görsel kalite metriklerini ölçer.
 - **BPP:** Bits per pixel skoru
 - **Metadata:** EXIF + PIL meta
 - 4-pass JSON sistemi
-- Streamlit rapor görüntüleyici (`quality-report-viewer`)
+- Rapor görüntüleyici meta'nın Gradio UI'ında
 
 ---
 

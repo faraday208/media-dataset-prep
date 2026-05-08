@@ -45,7 +45,7 @@ github.com/user/image-captioner
 Birden fazla bağımsız `pyproject.toml` tek venv altında çalışır. Tool'lar arası `import` mümkün.
 
 ### Topluluk benimsemesi
-2024+ Python ekosisteminde Astral (`uv`, `ruff`) en hızlı büyüyen paket yöneticisi. Hugging Face, Polars, FastAPI ekipleri benimsiyor.
+2024+ Python ekosisteminde Astral (`uv`, `ruff`) en hızlı büyüyen paket yöneticisi; Hugging Face, Polars gibi büyük projeler tarafından benimseniyor.
 
 ## Neden Tools Ana Repo'da Yok?
 

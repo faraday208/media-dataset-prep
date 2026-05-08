@@ -8,20 +8,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 META_DIR="$(dirname "$SCRIPT_DIR")"
 TOOLS_DIR="$META_DIR/tools"
 
-# .env varsa yükle
-if [ -f "$META_DIR/.env" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . "$META_DIR/.env"
-  set +a
-fi
-
 echo "==============================================="
 echo "  dataset-prep — Tool Health Check"
 echo "==============================================="
 echo ""
 
-# Klasör kontrolleri
+# Klasör + git durumu
 echo "--- Klasör durumu (tools/) ---"
 for dir in "$TOOLS_DIR"/*/; do
   if [ -d "$dir" ]; then
@@ -36,25 +28,28 @@ for dir in "$TOOLS_DIR"/*/; do
 done
 echo ""
 
-# API health check (eğer .env'de URL varsa)
-echo "--- API health check ---"
-declare -A APIS=(
-  ["01-validate"]="${VALIDATOR_API_URL:-}"
-  ["02-duplicate"]="${DUPLICATE_API_URL:-}"
-  ["03-quality"]="${QUALITY_API_URL:-}"
-  ["04-watermark"]="${WATERMARK_API_URL:-}"
+# Import edilebilirlik kontrolü
+echo "--- Python import kontrolü ---"
+declare -A MODULES=(
+  ["00-organize"]="rename_files"
+  ["01-validate"]="src.validators.file_validator"
+  ["02-duplicate"]="core"
+  ["03-quality"]="src.checkers"
+  ["05-resize"]="image_resizer"
 )
 
-for name in "${!APIS[@]}"; do
-  url="${APIS[$name]}"
-  if [ -z "$url" ]; then
-    echo "  - $name  (URL .env'de tanımlanmamış)"
+cd "$META_DIR"
+for name in "${!MODULES[@]}"; do
+  module="${MODULES[$name]}"
+  tool_path="$TOOLS_DIR/$name"
+  if [ ! -d "$tool_path" ]; then
+    echo "  ⚠ $name  (klasör yok)"
     continue
   fi
-  if curl -sf --max-time 2 "$url/health" > /dev/null 2>&1; then
-    echo "  ✓ $name  $url"
+  if (cd "$tool_path" && uv run --quiet python -c "import $module" 2>/dev/null); then
+    echo "  ✓ $name  ($module import OK)"
   else
-    echo "  ✗ $name  $url  (cevap yok)"
+    echo "  ✗ $name  ($module import başarısız)"
   fi
 done
 
