@@ -7,7 +7,7 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 > uyar (CLI flag isimleri, sidecar JSON şeması, undo kontratı, README şablonu).
 > Yeni tool yazarken / refactor ederken §10 compliance checklist takip edilir.
 
-## Durum tablosu (2026-05-08)
+## Durum tablosu (2026-05-09)
 
 | # | Tool | Tool sürümü | Conventions | Meta UI | Notlar |
 |---|---|---|---|---|---|
@@ -16,8 +16,8 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 | 02 | media-deduplicator | **v1.2.1** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri, gallery + lightbox + zoom + carousel, 65 test |
 | 03 | media-quality-checker | **v1.0.0** ✓ | ✓ | stub | clean release: tek run.py, 4 composite check (blur/brightness/contrast/bpp), action+undo, 44 test |
 | 04 | media-watermark-detector | **v1.0.0** ✓ | ✓ | stub | clean release: YOLOv8 detect + cleanup, scope daraltıldı (inpainting/training silindi), 33 test |
-| 05 | image-resizer | — | ? | stub | Lanczos batch; review değeri düşük |
-| 06 | image-captioner | — | ? | stub | Qwen3-VL multi-pass; **caption review** |
+| 05 | media-resizer | **v1.0.0** ✓ | ✓ | stub | clean release: Lanczos batch (copy/in-place mode), action+undo, 19 test |
+| 06 | media-captioner | **v1.0.0** ✓ | ✓ | stub | clean release: Qwen3-VL 5-pass multi-pass + json→txt export + undo, 14 test |
 | 07 | golden-set-generator | — | ? | stub | manuel cherry-pick; tool'un kendi Gradio UI'ı var |
 
 ✓ = bitti  ·  ? = denetlenmedi  ·  stub = "coming soon" placeholder  ·  — = bu projede sürüm bilgisi tutulmuyor (tool repo'sundan oku)
@@ -109,3 +109,5 @@ Mevcut tag'ler:
 - `media-deduplicator/v1.0.0` — clean release: tek run.py, exact+similar mode, action layer, undo, 41 test (eski `duplicate-image-finder` paketinin yerine)
 - `media-quality-checker/v1.0.0` — clean release: 4 composite quality check (blur/brightness/contrast/bpp), action+undo, 44 test (eski `image-quality-checker` paketinin yerine)
 - `media-watermark-detector/v1.0.0` — clean release: YOLOv8 detection + cleanup, scope daraltıldı (inpainting+training silindi), 33 test (eski `watermark-detection` paketinin yerine)
+- `media-resizer/v1.0.0` — clean release: tek run.py, Lanczos batch (copy/in-place), action+undo, 19 test (eski `image-resizer` paketinin yerine)
+- `media-captioner/v1.0.0` — clean release: 5-pass multi-pass captioning (Qwen3-VL via Ollama), JSON→TXT export, undo, scope daraltıldı (Gradio json-debugger + server scripts + archive silindi), 14 test (eski `image-captioner` paketinin yerine)

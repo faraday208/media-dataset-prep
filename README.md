@@ -58,8 +58,8 @@ Eğitime hazır dataset
 | 02 | **media-deduplicator** | [github](https://github.com/faraday208/media-deduplicator) | Library + CLI |
 | 03 | **media-quality-checker** | [github](https://github.com/faraday208/media-quality-checker) | Library + CLI |
 | 04 | **media-watermark-detector** | [github](https://github.com/faraday208/media-watermark-detector) | Library + CLI + YOLOv8 |
-| 05 | **image-resizer** | [github](https://github.com/faraday208/image-resizer) | Library + CLI |
-| 06 | **image-captioner** | [github](https://github.com/faraday208/image-captioner) | Library + Ollama client |
+| 05 | **media-resizer** | [github](https://github.com/faraday208/media-resizer) | Library + CLI |
+| 06 | **media-captioner** | [github](https://github.com/faraday208/media-captioner) | Library + Ollama client |
 | 07 | **golden-set-generator** | [github](https://github.com/faraday208/golden-set-generator) | Library + CLI |
 
 > Tüm tool'lar Python kütüphanesi olarak `core/` modülünden import edilir; UI katmanı (Gradio) meta-orchestrator'da merkezi olarak yönetilir. CLI'lar power-user/debug için korunmuştur.
@@ -174,8 +174,8 @@ media-dataset-prep/
 Sadece bir tool lazımsa onu **bağımsız** kullan:
 
 ```bash
-git clone https://github.com/faraday208/image-captioner
-cd image-captioner
+git clone https://github.com/faraday208/media-captioner
+cd media-captioner
 uv sync
 # Bu repo'nun pyproject.toml'una göre kendi venv'ini kurar
 # media-dataset-prep'e ihtiyaç yok
