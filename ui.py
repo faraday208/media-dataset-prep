@@ -38,6 +38,18 @@ from src.scanner import (  # noqa: E402
     write_report as validate_write_report,
     DEFAULT_REPORT_NAME as VALIDATE_REPORT_NAME,
 )
+# media-deduplicator (tools/02-duplicate) — `core` paketi adı validator'ın `src` ile
+# çakışmıyor (validator src/, deduplicator core/). Direkt import OK.
+from core import (  # noqa: E402
+    Hasher as DupHasher,
+    apply_action as dedup_apply_action,
+    find_exact_duplicates,
+    find_similar_images,
+    humanize_bytes as dedup_humanize_bytes,
+    undo_from_report as dedup_undo_from_report,
+    write_report as dedup_write_report,
+    DEFAULT_REPORT_NAME as DEDUP_REPORT_NAME,
+)
 
 # Step 00 için kullanılan medya uzantıları
 MEDIA_EXTENSIONS = media_organizer.MEDIA_EXTENSIONS
@@ -87,7 +99,7 @@ STATE = PipelineState()
 PIPELINE_STEPS: list[tuple[int, str, str, bool]] = [
     (0, "Organize", "Dosya isimlerini düzenli numaralandır", True),
     (1, "Validate", "Format ve dosya bütünlüğü kontrolü", True),
-    (2, "Duplicate", "Birebir + benzer kopya tespiti", False),
+    (2, "Duplicate", "Birebir + benzer kopya tespiti", True),
     (3, "Quality", "Blur, brightness, contrast metrikleri", False),
     (4, "Watermark", "YOLOv8 ile filigran tespit/temizleme", False),
     (5, "Resize", "Lanczos ile boyutlandırma", False),
@@ -1156,6 +1168,514 @@ def build_validate_tab():
         undo_btn.on("click", lambda: _run_undo(dry_run=False))
 
 
+def _path_to_url(path: str) -> str:
+    """Lokal dosya path'ini UI'nın static mount'una göre URL'e çevir.
+    /fs prefix'i main()'de mount edildi."""
+    p = Path(path).resolve()
+    return f"/fs{p}"
+
+
+def build_duplicate_tab():
+    """02 — Duplicate: exact/similar tarama + pair-wise gallery review + action + undo."""
+    # Tab-local state — tab her render edildiğinde sıfırlanır
+    tab_state: dict = {
+        "scan_result": None,        # core.ScanResult
+        "current_group_idx": 0,
+        "manual_keepers": {},       # group_idx → kept_path (UI override)
+    }
+
+    with ui.column().classes("w-full max-w-screen-2xl mx-auto p-6 gap-4"):
+        ui.label("02 — Duplicate").classes("text-2xl font-semibold")
+        ui.label(
+            "Exact (md5) veya similar (perceptual hash) duplicate tespit. "
+            "Her grupta hangi dosyanın kalacağını seç (default: keep_strategy)."
+        ).classes("text-sm text-slate-600")
+
+        with ui.grid(columns="320px 1fr").classes("w-full gap-6 mt-2"):
+            # ---------- Sol: Configuration ----------
+            with ui.card().classes("w-full"):
+                ui.label("Configuration").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+
+                mode_select = ui.select(
+                    {"exact": "Exact (md5)", "similar": "Similar (perceptual hash)"},
+                    label="Mode",
+                    value="exact",
+                ).props("dense outlined").classes("w-full")
+
+                # Similar parametreleri (mode=similar olduğunda görünür)
+                with ui.column().classes("w-full gap-2") as similar_panel:
+                    threshold_input = ui.number(
+                        "Threshold (0-64, düşük=daha sıkı)",
+                        value=10, min=0, max=64, step=1,
+                    ).props("dense outlined").classes("w-full")
+                    algorithm_select = ui.select(
+                        ["phash", "ahash", "dhash", "whash", "average_hash"],
+                        label="Algorithm",
+                        value="phash",
+                    ).props("dense outlined").classes("w-full")
+                    workers_input = ui.number(
+                        "Workers", value=0, min=0, step=1,
+                        # 0 = CPU count
+                    ).props("dense outlined").classes("w-full")
+                similar_panel.visible = False
+
+                def _toggle_similar(value: str):
+                    similar_panel.visible = (value == "similar")
+                mode_select.on_value_change(lambda e: _toggle_similar(e.value))
+
+                recursive_check = ui.checkbox("Recursive", value=True)
+
+                keep_strategy_select = ui.select(
+                    {
+                        "first": "İlk dosyayı tut",
+                        "largest": "En büyük",
+                        "smallest": "En küçük",
+                        "highest_resolution": "En yüksek çözünürlük",
+                        "best": "Best (resolution + size)",
+                    },
+                    label="Keep strategy (default)",
+                    value="first",
+                ).props("dense outlined").classes("w-full")
+
+                action_select = ui.select(
+                    {
+                        "none": "Sadece raporla (default)",
+                        "move": "/rejected'a taşı (undoable)",
+                        "delete": "Sil (irreversible)",
+                    },
+                    label="Aksiyon",
+                    value="none",
+                ).props("dense outlined").classes("w-full")
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    invalid_dir_input = ui.input(
+                        "Invalid dir",
+                        placeholder="move için zorunlu",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            invalid_dir_input, title="Rejected dizini seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                with ui.row().classes("gap-3 mt-1"):
+                    dryrun_check = ui.checkbox("Dry-run", value=True)
+                    yes_check = ui.checkbox("Onaysız (delete)", value=False)
+
+                with ui.row().classes("gap-2 mt-3 w-full items-center"):
+                    scan_btn = ui.button("Scan").props("color=primary no-caps")
+                    apply_btn = ui.button("Aksiyonu uygula").props(
+                        "color=positive no-caps"
+                    )
+                    apply_btn.disable()
+                progress_label = ui.label("").classes("text-xs text-slate-600")
+                progress_bar = ui.linear_progress(
+                    value=0, show_value=False
+                ).classes("w-full")
+                progress_bar.visible = False
+
+                ui.separator().classes("my-3")
+                ui.label("Undo").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                undo_input = ui.input(
+                    "duplicate_report.json yolu",
+                    placeholder="(move action sonrası otomatik dolar)",
+                ).props("dense outlined").classes("w-full")
+                with ui.row().classes("gap-2"):
+                    undo_preview_btn = ui.button("Preview").props(
+                        "outline color=primary no-caps"
+                    )
+                    undo_btn = ui.button("Undo").props(
+                        "outline color=grey-7 no-caps"
+                    )
+
+            # ---------- Sağ: Sonuç + Gallery ----------
+            with ui.card().classes("w-full"):
+                ui.label("Sonuç").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                summary_label = ui.label(
+                    "Henüz scan yapılmadı — sol panelde Scan tıkla."
+                ).classes("text-sm text-slate-600 italic mt-1")
+
+                with ui.row().classes("w-full justify-around mt-2"):
+                    for label_text in ("Total", "Unique", "Groups", "Removable"):
+                        with ui.column().classes("items-center gap-0"):
+                            card = ui.label("—").classes("text-2xl font-bold text-slate-700")
+                            tab_state.setdefault("stat_cards", {})[label_text.lower()] = card
+                            ui.label(label_text).classes(
+                                "text-xs uppercase text-slate-500 tracking-wide"
+                            )
+                space_label = ui.label("").classes("text-xs text-slate-500 text-center mt-1")
+
+                ui.separator().classes("my-3")
+
+                # Group navigator
+                with ui.row().classes("w-full items-center gap-2"):
+                    prev_btn = ui.button(icon="chevron_left").props(
+                        "flat dense color=grey-7"
+                    )
+                    group_label = ui.label("Grup —").classes("text-base font-semibold")
+                    next_btn = ui.button(icon="chevron_right").props(
+                        "flat dense color=grey-7"
+                    )
+                    ui.space()
+                    ui.label("Bulk:").classes("text-xs text-slate-500")
+                    bulk_first_btn = ui.button("first").props(
+                        "flat dense color=grey-7"
+                    ).tooltip("Tüm gruplarda ilk dosyayı keeper yap")
+                    bulk_largest_btn = ui.button("largest").props(
+                        "flat dense color=grey-7"
+                    ).tooltip("Tüm gruplarda en büyük dosyayı keeper yap")
+                prev_btn.disable()
+                next_btn.disable()
+
+                # Group içerik paneli (gallery)
+                gallery_panel = ui.column().classes("w-full gap-3")
+                with gallery_panel:
+                    ui.label("Scan sonrası burada görsel grup gösterilir.").classes(
+                        "text-sm text-slate-500 italic"
+                    )
+
+        # ------------- Action handlers -------------
+
+        def _build_config() -> dict:
+            return {
+                "mode": mode_select.value,
+                "threshold": int(threshold_input.value or 10),
+                "algorithm": algorithm_select.value,
+                "workers": int(workers_input.value or 0) or None,
+            }
+
+        def _validate_inputs() -> Optional[str]:
+            if not STATE.is_valid_dataset():
+                return "Dataset yolu geçerli değil (header'da doğrula)"
+            if action_select.value == "move" and not invalid_dir_input.value:
+                return "Move için Invalid dir gerekli"
+            return None
+
+        def _on_action_change(value: str):
+            if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
+                invalid_dir_input.value = str(Path(STATE.dataset_path) / "duplicates_rejected")
+                invalid_dir_input.update()
+        action_select.on_value_change(lambda e: _on_action_change(e.value))
+
+        def _refresh_stats():
+            sr = tab_state["scan_result"]
+            if sr is None:
+                return
+            cards = tab_state["stat_cards"]
+            cards["total"].set_text(str(sr.total_scanned))
+            cards["unique"].set_text(str(sr.unique_count))
+            cards["groups"].set_text(str(len(sr.groups)))
+            cards["removable"].set_text(str(sr.removable_count))
+            space_label.set_text(
+                f"Kazanılabilecek: {dedup_humanize_bytes(sr.space_freeable_bytes)}"
+            )
+
+        def _refresh_gallery():
+            sr = tab_state["scan_result"]
+            gallery_panel.clear()
+            if sr is None or not sr.groups:
+                with gallery_panel:
+                    if sr is not None:
+                        ui.label("Duplicate bulunamadı — temiz dataset.").classes(
+                            "text-sm text-slate-500"
+                        )
+                    else:
+                        ui.label("Scan sonrası burada görsel grup gösterilir.").classes(
+                            "text-sm text-slate-500 italic"
+                        )
+                return
+
+            idx = tab_state["current_group_idx"]
+            idx = max(0, min(idx, len(sr.groups) - 1))
+            tab_state["current_group_idx"] = idx
+            grp = sr.groups[idx]
+
+            group_label.set_text(f"Grup {idx + 1} / {len(sr.groups)}  ·  {len(grp.files)} dosya")
+
+            # Manuel keeper varsa onu kullan, yoksa group.kept (apply_action sonrası)
+            # veya files[0]['path'] (default first)
+            current_keeper = (
+                tab_state["manual_keepers"].get(idx)
+                or grp.kept
+                or grp.files[0]["path"]
+            )
+
+            with gallery_panel:
+                # Hash + algorithm bilgi
+                meta_text = f"hash={grp.hash[:12]}…  algorithm={grp.algorithm}"
+                if grp.threshold is not None:
+                    meta_text += f"  threshold={grp.threshold}"
+                ui.label(meta_text).classes("text-xs font-mono text-slate-500")
+
+                # Dosya kartları — yan yana grid
+                num_cols = min(4, len(grp.files))
+                with ui.grid(columns=f"repeat({num_cols}, 1fr)").classes("w-full gap-3"):
+                    for f in grp.files:
+                        path = f["path"]
+                        is_keeper = (path == current_keeper)
+                        card_classes = (
+                            "p-2 rounded border-2 "
+                            + ("border-green-500 bg-green-50"
+                               if is_keeper else "border-slate-200")
+                        )
+                        with ui.column().classes(card_classes):
+                            try:
+                                ui.image(_path_to_url(path)).classes(
+                                    "w-full h-48 object-contain bg-slate-100"
+                                )
+                            except Exception:
+                                ui.label("(önizleme yok)").classes("text-xs text-slate-400")
+                            ui.label(Path(path).name).classes(
+                                "text-xs font-mono truncate"
+                            ).tooltip(path)
+                            info_parts = [
+                                dedup_humanize_bytes(f.get("size_bytes", 0))
+                            ]
+                            if "distance" in f:
+                                info_parts.append(f"d={f['distance']}")
+                            ui.label(" · ".join(info_parts)).classes(
+                                "text-xs text-slate-600"
+                            )
+                            keep_btn_label = "✓ Korunan" if is_keeper else "Bunu tut"
+                            keep_btn_color = "color=positive" if is_keeper else "color=grey-7"
+                            ui.button(
+                                keep_btn_label,
+                                on_click=lambda p=path, i=idx: _set_keeper(i, p),
+                            ).props(f"flat dense {keep_btn_color} no-caps")
+
+        def _set_keeper(group_idx: int, path: str):
+            tab_state["manual_keepers"][group_idx] = path
+            _refresh_gallery()
+
+        def _go_prev():
+            if tab_state["scan_result"] and tab_state["current_group_idx"] > 0:
+                tab_state["current_group_idx"] -= 1
+                _refresh_gallery()
+
+        def _go_next():
+            sr = tab_state["scan_result"]
+            if sr and tab_state["current_group_idx"] < len(sr.groups) - 1:
+                tab_state["current_group_idx"] += 1
+                _refresh_gallery()
+
+        prev_btn.on("click", _go_prev)
+        next_btn.on("click", _go_next)
+
+        def _bulk_set_keeper(strategy: str):
+            sr = tab_state["scan_result"]
+            if sr is None:
+                return
+            for i, g in enumerate(sr.groups):
+                if strategy == "first":
+                    tab_state["manual_keepers"][i] = g.files[0]["path"]
+                elif strategy == "largest":
+                    j = max(range(len(g.files)), key=lambda k: g.files[k].get("size_bytes", 0))
+                    tab_state["manual_keepers"][i] = g.files[j]["path"]
+            _refresh_gallery()
+            ui.notify(f"Bulk keeper={strategy} uygulandı ({len(sr.groups)} grup)", type="info")
+
+        bulk_first_btn.on("click", lambda: _bulk_set_keeper("first"))
+        bulk_largest_btn.on("click", lambda: _bulk_set_keeper("largest"))
+
+        async def on_scan():
+            err = _validate_inputs()
+            if err:
+                ui.notify(err, type="negative")
+                return
+
+            cfg = _build_config()
+            if cfg["mode"] == "similar" and not DupHasher.is_perceptual_hash_available():
+                ui.notify("imagehash kütüphanesi yüklü değil", type="negative")
+                return
+
+            scan_btn.disable()
+            apply_btn.disable()
+            progress_bar.visible = True
+            progress_bar.set_value(0)
+            progress_label.set_text("Tarama…")
+
+            def _cb(current: int, total: int, msg: str):
+                if total > 0:
+                    progress_bar.set_value(current / total)
+                progress_label.set_text(msg)
+
+            try:
+                await asyncio.sleep(0)
+                if cfg["mode"] == "exact":
+                    sr = find_exact_duplicates(
+                        STATE.dataset_path,
+                        recursive=recursive_check.value,
+                        progress_cb=_cb,
+                    )
+                else:
+                    sr = find_similar_images(
+                        STATE.dataset_path,
+                        threshold=cfg["threshold"],
+                        algorithm=cfg["algorithm"],
+                        recursive=recursive_check.value,
+                        workers=cfg["workers"],
+                        progress_cb=_cb,
+                    )
+
+                tab_state["scan_result"] = sr
+                tab_state["current_group_idx"] = 0
+                tab_state["manual_keepers"] = {}
+
+                # Initial keeper'ları keep_strategy'e göre set et (UI override)
+                _bulk_set_keeper(keep_strategy_select.value if keep_strategy_select.value in ("first", "largest") else "first")
+
+                _refresh_stats()
+                _refresh_gallery()
+
+                if sr.has_duplicates:
+                    prev_btn.enable()
+                    next_btn.enable()
+                    apply_btn.enable()
+                else:
+                    prev_btn.disable()
+                    next_btn.disable()
+                    apply_btn.disable()
+
+                summary_label.set_text(
+                    f"Scan tamam: {len(sr.groups)} grup, "
+                    f"{sr.removable_count} silinebilir, "
+                    f"{dedup_humanize_bytes(sr.space_freeable_bytes)} kazanım"
+                )
+                ui.notify(
+                    f"{len(sr.groups)} grup bulundu" if sr.has_duplicates
+                    else "Duplicate bulunamadı",
+                    type="positive" if sr.has_duplicates else "info",
+                )
+            except Exception as e:
+                ui.notify(f"Scan hatası: {e}", type="negative")
+            finally:
+                progress_bar.visible = False
+                progress_label.set_text("")
+                scan_btn.enable()
+
+        scan_btn.on("click", on_scan)
+
+        def _confirm_delete_dialog(count: int, *, on_confirm):
+            with ui.dialog() as dlg, ui.card().classes("w-[500px]"):
+                ui.label("⚠ Kalıcı silme onayı").classes("text-lg font-semibold")
+                ui.label(
+                    f"{count} duplicate dosya KALICI olarak silinecek. "
+                    "Bu işlem geri alınamaz. Önce 'Move' ile dene."
+                ).classes("text-sm text-slate-700")
+                with ui.row().classes("w-full justify-end gap-2 mt-3"):
+                    ui.button("Cancel", on_click=dlg.close).props("flat color=grey no-caps")
+
+                    def _confirm():
+                        dlg.close()
+                        on_confirm()
+
+                    ui.button("Sil", on_click=_confirm).props("color=negative no-caps")
+            dlg.open()
+
+        def _do_apply():
+            sr = tab_state["scan_result"]
+            if sr is None:
+                ui.notify("Önce Scan çalıştır", type="negative")
+                return
+
+            # Manuel keeper override'larını apply_action'a uygulanacak şekilde
+            # ScanResult.groups[*].files'ı yeniden sırala — keeper ilk eleman
+            # olsun, böylece keep_strategy="first" doğru sonucu verir.
+            for i, g in enumerate(sr.groups):
+                manual = tab_state["manual_keepers"].get(i)
+                if manual:
+                    # Manual'i listenin başına al
+                    files = g.files
+                    keep_idx = next(
+                        (k for k, f in enumerate(files) if f["path"] == manual),
+                        0,
+                    )
+                    if keep_idx != 0:
+                        g.files = [files[keep_idx]] + files[:keep_idx] + files[keep_idx + 1:]
+
+            action = action_select.value
+            if action == "delete" and not dryrun_check.value and not yes_check.value:
+                _confirm_delete_dialog(sr.removable_count, on_confirm=_do_apply_inner)
+                return
+            _do_apply_inner()
+
+        def _do_apply_inner():
+            sr = tab_state["scan_result"]
+            try:
+                ar = dedup_apply_action(
+                    sr,
+                    action=action_select.value,
+                    invalid_dir=invalid_dir_input.value or None,
+                    keep_strategy="first",  # zaten manuel keeper'ı başa aldık
+                    dry_run=dryrun_check.value,
+                )
+
+                if action_select.value == "move" and invalid_dir_input.value:
+                    report_path = Path(invalid_dir_input.value) / DEDUP_REPORT_NAME
+                else:
+                    report_path = Path(STATE.dataset_path) / DEDUP_REPORT_NAME
+
+                cfg = _build_config()
+                dedup_write_report(
+                    report_path,
+                    scan_result=sr,
+                    action_result=ar,
+                    recursive=recursive_check.value,
+                    config=cfg,
+                )
+                undo_input.set_value(str(report_path))
+                STATE.last_report_paths[2] = str(report_path)
+
+                dryrun_tag = " (DRY-RUN)" if dryrun_check.value else ""
+                if action_select.value == "move":
+                    msg = f"Taşınan: {len(ar.entries)}{dryrun_tag} → {ar.invalid_dir}"
+                elif action_select.value == "delete":
+                    msg = f"Silinen: {len(ar.entries)}{dryrun_tag}"
+                else:
+                    msg = f"Sadece raporlandı: {len(sr.groups)} grup"
+                summary_label.set_text(f"{msg}\nRapor: {report_path}")
+                ui.notify(msg, type="positive" if not dryrun_check.value else "info")
+                STATE.notify_change()
+            except Exception as e:
+                ui.notify(f"Aksiyon hatası: {e}", type="negative")
+
+        apply_btn.on("click", _do_apply)
+
+        def _run_undo(dry_run: bool):
+            report = undo_input.value or STATE.last_report_paths.get(2)
+            if not report:
+                ui.notify("Undo için rapor yolu girin", type="negative")
+                return
+            if not Path(report).exists():
+                ui.notify(f"Rapor yok: {report}", type="negative")
+                return
+            try:
+                summary = dedup_undo_from_report(report, dry_run=dry_run)
+                label = "Undo preview" if dry_run else "Undo"
+                msg = (
+                    f"{label}: restored={summary['restored']}, "
+                    f"skipped={summary['skipped']}"
+                )
+                if summary["irreversible_deletes"]:
+                    msg += f", irreversible_deletes={summary['irreversible_deletes']}"
+                ui.notify(msg, type="info" if dry_run else "positive")
+                summary_label.set_text(msg)
+                if not dry_run:
+                    STATE.notify_change()
+            except Exception as e:
+                ui.notify(f"Undo hatası: {e}", type="negative")
+
+        undo_preview_btn.on("click", lambda: _run_undo(dry_run=True))
+        undo_btn.on("click", lambda: _run_undo(dry_run=False))
+
+
 def build_stub_tab(idx: int, name: str, desc: str):
     with ui.column().classes(
         "w-full max-w-screen-md mx-auto p-12 gap-3 items-center justify-center min-h-96"
@@ -1209,6 +1729,7 @@ def main_page(tab: str = "overview"):
     WIRED_BUILDERS = {
         0: build_organize_tab,
         1: build_validate_tab,
+        2: build_duplicate_tab,
     }
 
     with ui.tab_panels(tabs, value=initial).classes("w-full"):
@@ -1223,6 +1744,10 @@ def main_page(tab: str = "overview"):
 
 
 def main():
+    # Static file mount — UI'da kullanıcının dataset'inden image preview göstermek
+    # için kök filesystem'i /fs prefix'i altında mount ediyoruz. Lokal kullanım,
+    # network expose'a uygun değil (production'da proxy/auth düşünülmeli).
+    app.add_static_files("/fs", "/")
     ui.run(
         title="Media Dataset Prep",
         port=int(os.environ.get("UI_PORT", "8200")),
