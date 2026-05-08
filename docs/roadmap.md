@@ -12,7 +12,7 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 | # | Tool | Tool sürümü | Conventions | Meta UI | Notlar |
 |---|---|---|---|---|---|
 | 00 | media-organizer | **v0.5.1** ✓ | ✓ | **wired** ✓ | CLI parity %100; recursive flat/tree, undo + cleanup |
-| 01 | image-validator | **v0.2.1** ✓ | ✓ | stub | move/delete + undo, threshold CLI override, 43 unit test (v0.2.1: path-based dosya çözümleme bug fix) |
+| 01 | media-validator | **v0.3.0** ✓ | ✓ | stub | paket adı (image→media), v0.2.1 bug fix dahil, 43 unit test |
 | 02 | duplicate-image-finder | — | ? | stub | exact (md5) + perceptual (phash); **manuel review** |
 | 03 | image-quality-checker | — | ? | stub | blur/brightness/contrast metrikleri; **gallery filter** |
 | 04 | watermark-detection | — | ? | stub | YOLOv8; tool'un kendi Gradio UI'ı var (port 8300) |
@@ -99,5 +99,6 @@ git tag'leri (`media-organizer@v0.5.0` gibi) referans alınır.
 Mevcut tag'ler:
 - `media-organizer/v0.5.1` — tool field + .gitignore conventions fix
 - `media-organizer/v0.5.0` — recursive scan + cleanup
-- `image-validator/v0.2.1` — kritik bug fix: path-based dosya çözümleme
-- `image-validator/v0.2.0` — action layer (move/delete) + undo + recursive + threshold flags
+- `media-validator/v0.3.0` — paket adı `image-validator` → `media-validator` (media-organizer ile tutarlı, video genişlemesi için)
+- `image-validator/v0.2.1` (lokal, push'lanmamış) — kritik bug fix: path-based dosya çözümleme
+- `image-validator/v0.2.0` (lokal, push'lanmamış) — action layer (move/delete) + undo + recursive + threshold flags

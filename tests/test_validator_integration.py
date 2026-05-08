@@ -1,5 +1,5 @@
 """
-image-validator'un meta-orchestrator'a integrasyonu için testler.
+media-validator'un meta-orchestrator'a integrasyonu için testler.
 
 Tool'un iç davranışını DOĞRULAMAZ — onun için tool'un kendi 39 testi var.
 Burada sadece 'workspace katmanı çalışıyor mu' ve 'pipeline 1 adımı uçtan uca
@@ -28,17 +28,17 @@ def test_validate_tool_is_present_at_workspace_path():
 
 
 def test_validate_tool_pyproject_declares_expected_name():
-    """Workspace member'ın pyproject'i 'image-validator' adını ilan eder."""
+    """Workspace member'ın pyproject'i 'media-validator' adını ilan eder."""
     pyproj = TOOLS_VALIDATE / "pyproject.toml"
     assert pyproj.exists()
     content = pyproj.read_text()
-    assert 'name = "image-validator"' in content
-    # v0.2.1+ gerekli (action layer + path-based dosya çözümleme bug fix)
+    assert 'name = "media-validator"' in content
+    # v0.3.0+ gerekli (paket adı media-validator'a geçiş)
     import re
     m = re.search(r'version = "(\d+)\.(\d+)\.(\d+)"', content)
     assert m, "version field bulunamadı"
     major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    assert (major, minor, patch) >= (0, 2, 1), f"v0.2.1+ gerekli, bulundu: {m.group(0)}"
+    assert (major, minor, patch) >= (0, 3, 0), f"v0.3.0+ gerekli, bulundu: {m.group(0)}"
 
 
 def test_validator_importable_via_workspace():
@@ -137,7 +137,7 @@ def test_step01_report_provides_undo_contract(tmp_path):
     assert result.returncode == 0
 
     report = json.loads((rejected / "validate_report.json").read_text())
-    assert report["tool"] == "image-validator"
+    assert report["tool"] == "media-validator"
     assert report["action"] == "move"
     assert report["summary"]["invalid"] >= 3
     assert report["summary"]["valid"] >= 3

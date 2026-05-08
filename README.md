@@ -54,7 +54,7 @@ Eğitime hazır dataset
 | # | Tool | Repo | Tip |
 |---|---|---|---|
 | 00 | **media-organizer** | [github](https://github.com/faraday208/media-organizer) | Library + CLI |
-| 01 | **image-validator** | [github](https://github.com/faraday208/image-validator) | Library + CLI |
+| 01 | **media-validator** | [github](https://github.com/faraday208/media-validator) | Library + CLI |
 | 02 | **duplicate-image-finder** | [github](https://github.com/faraday208/duplicate-image-finder) | Library + CLI |
 | 03 | **image-quality-checker** | [github](https://github.com/faraday208/image-quality-checker) | Library + CLI |
 | 04 | **watermark-detection** | [github](https://github.com/faraday208/watermark-detection) | Library + CLI + YOLOv8 |
@@ -162,7 +162,7 @@ media-dataset-prep/
 │
 └── tools/                 # (gitignored) install-tools.sh ile dolar
     ├── 00-organize/       # → media-organizer
-    ├── 01-validate/       # → image-validator
+    ├── 01-validate/       # → media-validator
     ├── 02-duplicate/      # → duplicate-image-finder
     └── ...
 ```

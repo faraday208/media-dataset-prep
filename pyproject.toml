@@ -14,7 +14,7 @@ authors = [
 # Her tool tools/ altında symlink (development) veya clone (production) olarak yaşar.
 dependencies = [
     "media-organizer",
-    "image-validator",
+    "media-validator",
     "duplicate-image-finder",
     "image-quality-checker",
     "watermark-detection",
@@ -54,7 +54,7 @@ members = [
 # Workspace member'lara isim üzerinden bağlan
 [tool.uv.sources]
 media-organizer = { workspace = true }
-image-validator = { workspace = true }
+media-validator = { workspace = true }
 duplicate-image-finder = { workspace = true }
 image-quality-checker = { workspace = true }
 watermark-detection = { workspace = true }

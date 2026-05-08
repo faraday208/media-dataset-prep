@@ -14,7 +14,7 @@ media-dataset-prep meta repo dokümantasyonu.
 
 Her tool'un kendi detaylı dokümantasyonu **kendi repo'sunda** yaşar:
 
-- `tools/01-validate/README.md` — image-validator
+- `tools/01-validate/README.md` — media-validator
 - `tools/02-duplicate/README.md` — duplicate-image-finder
 - ... vb.
 

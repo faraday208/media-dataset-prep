@@ -20,7 +20,7 @@ Pipeline 7 ardışık aşamadan oluşur. Her aşama bağımsız çalışabilir, 
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [01] image-validator                                        │
+│  [01] media-validator                                        │
 │  - Format doğrulama (JPG, PNG, WebP, ...)                   │
 │  - Bozuk dosya tespiti (corrupt header, eksik EOF)          │
 │  - MIME-type tutarlılık                                      │
