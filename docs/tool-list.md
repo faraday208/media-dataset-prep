@@ -2,6 +2,11 @@
 
 Pipeline'ın 8 modülü (00-07).
 
+> Her tool kendi GitHub repo'sunda yaşıyor (polyrepo). Aşağıda meta seviyede
+> ne işe yaradıkları ve pipeline'daki rolleri özetlenir; **özellikler, kullanım,
+> flag'ler, sürüm notları** için linklenmiş GitHub README'lerine bakın — meta
+> doc her sürümde tekrar güncellenmek zorunda kalmasın.
+
 ## Pipeline Tools
 
 ### 00 — media-organizer
@@ -9,19 +14,7 @@ Pipeline'ın 8 modülü (00-07).
 **Tip:** CLI + Python kütüphanesi (tek dosya: `media_organizer.py`)
 **Konum:** `tools/00-organize/`
 
-Pipeline'ın 0. adımı — dağınık dosya isimlerini düzenli numaralandırır. Ham veri pipeline'a girmeden önce bu adımdan geçer.
-
-**Özellikler:**
-- Tip-bazlı sayma (jpg ayrı sequence, mp4 ayrı, mp3 ayrı)
-- Tarih sıralı (oluşturma zamanına göre — EXIF DateTimeOriginal veya mtime)
-- Dry-run modu (`--dry-run`)
-- JSON rapor (`rename_report.json`)
-- Sıfır bağımlılık (Python stdlib only)
-
-**Kullanım:**
-```bash
-python tools/00-organize/media_organizer.py /path/to/folder --prefix "MyDataset" --dry-run
-```
+Pipeline'ın 0. adımı — dağınık dosya isimlerini düzenli numaralandırır. Tip-bazlı sequence (jpg/mp4/mp3 ayrı), EXIF/mtime'a göre kronolojik sıralama, opsiyonel recursive scan (flat/tree). Ham veri pipeline'a girmeden önce bu adımdan geçer.
 
 **Niçin pipeline'ın 0. adımı?**
 Validate (01), duplicate (02), caption (06) gibi adımlar düzenli isimlendirme bekler. `IMG_3847.jpg`, `DSC_0291.jpg`, `Screenshot 2024-01-15.png` gibi karışık isimler caption eşleştirmesi (`image_001.jpg` ↔ `image_001.txt`) zorlaştırır.
@@ -32,13 +25,7 @@ Validate (01), duplicate (02), caption (06) gibi adımlar düzenli isimlendirme 
 **GitHub:** https://github.com/faraday208/image-validator
 **Tip:** Python kütüphanesi + CLI
 
-Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk veya yanlış format dosyalar buradan geri döner.
-
-**Özellikler:**
-- MIME-type doğrulama
-- Header / EOF kontrolü (corrupt image detection)
-- Format whitelist (jpg, png, webp, tiff, vb.)
-- Batch / async tarama
+Format ve dosya bütünlüğü kontrolü (MIME-type, header/EOF, format whitelist). Pipeline'ın ilk savunması — bozuk veya yanlış format dosyalar buradan geri döner.
 
 ---
 
@@ -48,13 +35,9 @@ Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk 
 
 İki tip kopya tespiti:
 - **Birebir (exact):** MD5 hash — saniyeler içinde binlerce dosya
-- **Benzer (similar):** Perceptual hash (phash, ahash, dhash, whash)
+- **Benzer (similar):** Perceptual hash (phash/ahash/dhash/whash), eşik konfigüre edilebilir
 
-**Özellikler:**
-- Konfigüre edilebilir benzerlik eşiği (0-64)
-- keep_strategy: largest / smallest / first / best
-- Multi-threaded (ThreadPoolExecutor)
-- Manuel review meta'nın Gradio UI'ında yapılır
+Manuel review meta'nın Gradio UI'ında yapılır.
 
 ---
 
@@ -62,16 +45,7 @@ Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk 
 **GitHub:** https://github.com/faraday208/image-quality-checker
 **Tip:** Python kütüphanesi + CLI
 
-Görsel kalite metriklerini ölçer.
-
-**Özellikler:**
-- **Blur:** Laplacian variance
-- **Brightness:** Histogram analizi
-- **Contrast:** Standart sapma
-- **BPP:** Bits per pixel skoru
-- **Metadata:** EXIF + PIL meta
-- 4-pass JSON sistemi
-- Rapor görüntüleyici meta'nın Gradio UI'ında
+Görsel kalite metrikleri (blur, brightness, contrast, BPP, EXIF). 4-pass JSON sistemi. Rapor görüntüleyici meta'nın Gradio UI'ında.
 
 ---
 
@@ -80,14 +54,7 @@ Görsel kalite metriklerini ölçer.
 **Tip:** CLI + Gradio UI + YOLOv8 model
 **Port:** 8300 (UI için)
 
-YOLOv8 ile filigran tespit ve temizleme.
-
-**Özellikler:**
-- 3 farklı YOLOv8 model (s, v2, v3)
-- Annotated training datasets
-- Bounding box çıkarımı
-- Toplu cleaning (filigranlı görselleri ayrı klasör)
-- Gradio UI ile manuel review + annotation
+YOLOv8 ile filigran tespit ve temizleme; manuel review + annotation Gradio UI üzerinden.
 
 **Not:** Model dosyaları `~/Models/watermarks_yolov8/` altında bekleniyor.
 
@@ -97,13 +64,7 @@ YOLOv8 ile filigran tespit ve temizleme.
 **GitHub:** https://github.com/faraday208/image-resizer
 **Tip:** CLI (tek script)
 
-Pillow + Lanczos algoritması ile yüksek kaliteli boyutlandırma.
-
-**Özellikler:**
-- Aspect ratio koruma
-- Toplu işlem
-- Otomatik output dizin oluşturma
-- Optimize edilmiş çıktı
+Pillow + Lanczos algoritması ile yüksek kaliteli boyutlandırma; aspect ratio korunur.
 
 **Bağımlılık:** Sadece Pillow.
 
@@ -111,33 +72,9 @@ Pillow + Lanczos algoritması ile yüksek kaliteli boyutlandırma.
 
 ### 06 — image-captioner
 **GitHub:** https://github.com/faraday208/image-captioner
-**Tip:** Client + Server (Ollama)
+**Tip:** Client + Server (Ollama veya remote)
 
-Qwen3-VL-30B ile multi-pass captioning. LoRA / fine-tune training için.
-
-**Özellikler — v6:**
-- 5-pass sistemi:
-  - Pass 1: Saç + yüz ifadesi
-  - Pass 2: Vücut + poz
-  - Pass 3: Kıyafet + aksesuar
-  - Pass 4: Sahne + teknik (lighting, kompozisyon)
-  - Pass 5: Doğal dil caption (short/medium/long)
-- JSON-aware (structured + caption tutarlı)
-- `--character` parametresi: caption'da karakter ismi yer alır
-- Local (Ollama) veya remote (RunPod) backend
-- 3 caption uzunluğu (training için seçilir)
-
-**Çıktı:**
-```json
-{
-  "structured": { /* 5-pass JSON */ },
-  "captions": {
-    "short": "...",
-    "medium": "...",
-    "long": "..."
-  }
-}
-```
+Qwen3-VL-30B ile multi-pass captioning (5-pass: saç/yüz, vücut/poz, kıyafet, sahne/teknik, doğal dil caption — 3 uzunlukta: short/medium/long). LoRA / fine-tune training için. JSON structured + caption tutarlılığı.
 
 ---
 
@@ -145,17 +82,6 @@ Qwen3-VL-30B ile multi-pass captioning. LoRA / fine-tune training için.
 **GitHub:** https://github.com/faraday208/golden-set-generator
 **Tip:** src + Gradio UI
 
-Pipeline'ın son aşaması — manuel cherry-pick.
-
-**Özellikler:**
-- Filtre + universal selector (`universal_selector.py`)
-- Gradio UI ile dataset review
-- Batch label / star
-- Final dataset için "altın küme" seçimi (cherry-pick)
-
-**Use case:**
-- LoRA training öncesi ~100 mükemmel görsel seçimi
-- Yarı-otomatik filtre + manuel onay
+Pipeline'ın son aşaması — yarı-otomatik filtre + manuel cherry-pick. LoRA training öncesi ~100 mükemmel görsel seçimi için Gradio UI ile dataset review, batch label/star.
 
 ---
-
