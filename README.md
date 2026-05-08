@@ -51,16 +51,18 @@ Eğitime hazır dataset
 
 ## 🧰 Tool'lar (Her Biri Bağımsız Repo)
 
-| # | Tool | Repo | Tip | UI? |
-|---|---|---|---|---|
-| 00 | **media-organizer** | [github](https://github.com/faraday208/media-organizer) | CLI | — |
-| 01 | **image-validator** | [github](https://github.com/faraday208/image-validator) | API + CLI | — |
-| 02 | **duplicate-image-finder** | [github](https://github.com/faraday208/duplicate-image-finder) | API + CLI + UI | ✅ Gradio |
-| 03 | **image-quality-checker** | [github](https://github.com/faraday208/image-quality-checker) | API + UI | ✅ Streamlit |
-| 04 | **watermark-detection** | [github](https://github.com/faraday208/watermark-detection) | CLI + UI + YOLOv8 | ✅ Gradio |
-| 05 | **image-resizer** | [github](https://github.com/faraday208/image-resizer) | CLI | — |
-| 06 | **image-captioner** | [github](https://github.com/faraday208/image-captioner) | Client + Server | — |
-| 07 | **golden-set-generator** | [github](https://github.com/faraday208/golden-set-generator) | src + UI | ✅ Gradio |
+| # | Tool | Repo | Tip |
+|---|---|---|---|
+| 00 | **media-organizer** | [github](https://github.com/faraday208/media-organizer) | Library + CLI |
+| 01 | **image-validator** | [github](https://github.com/faraday208/image-validator) | Library + CLI |
+| 02 | **duplicate-image-finder** | [github](https://github.com/faraday208/duplicate-image-finder) | Library + CLI |
+| 03 | **image-quality-checker** | [github](https://github.com/faraday208/image-quality-checker) | Library + CLI |
+| 04 | **watermark-detection** | [github](https://github.com/faraday208/watermark-detection) | Library + CLI + YOLOv8 |
+| 05 | **image-resizer** | [github](https://github.com/faraday208/image-resizer) | Library + CLI |
+| 06 | **image-captioner** | [github](https://github.com/faraday208/image-captioner) | Library + Ollama client |
+| 07 | **golden-set-generator** | [github](https://github.com/faraday208/golden-set-generator) | Library + CLI |
+
+> Tüm tool'lar Python kütüphanesi olarak `core/` modülünden import edilir; UI katmanı (Gradio) meta-orchestrator'da merkezi olarak yönetilir. CLI'lar power-user/debug için korunmuştur.
 
 ---
 
