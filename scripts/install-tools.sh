@@ -24,7 +24,7 @@ mkdir -p "$TOOLS_DIR"
 
 # Pipeline aşaması → (yerel klasör adı | GitHub URL) eşleşmesi
 declare -A LOCAL_PATHS=(
-  ["00-organize"]="$LOCAL_BASE/media-organizer"
+  ["00-rename"]="$LOCAL_BASE/media-renamer"
   ["01-validate"]="$LOCAL_BASE/image-validator"
   ["02-duplicate"]="$LOCAL_BASE/duplicate-image-finder"
   ["03-quality"]="$LOCAL_BASE/image-quality-checker"
@@ -35,7 +35,7 @@ declare -A LOCAL_PATHS=(
 )
 
 declare -A GITHUB_URLS=(
-  ["00-organize"]="https://github.com/faraday208/media-organizer.git"
+  ["00-rename"]="https://github.com/faraday208/media-renamer.git"
   ["01-validate"]="https://github.com/faraday208/image-validator.git"
   ["02-duplicate"]="https://github.com/faraday208/duplicate-image-finder.git"
   ["03-quality"]="https://github.com/faraday208/image-quality-checker.git"
@@ -93,7 +93,7 @@ setup_github() {
 }
 
 failures=0
-order=("00-organize" "01-validate" "02-duplicate" "03-quality" "04-watermark" "05-resize" "06-caption" "07-golden-set")
+order=("00-rename" "01-validate" "02-duplicate" "03-quality" "04-watermark" "05-resize" "06-caption" "07-golden-set")
 
 for name in "${order[@]}"; do
   case "$MODE" in
