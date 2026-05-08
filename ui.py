@@ -2220,11 +2220,13 @@ def build_quality_tab():
                 invalid_table = ui.table(
                     columns=[
                         {"name": "filename", "label": "Dosya", "field": "filename", "align": "left", "sortable": True},
+                        {"name": "subdir", "label": "Subdir", "field": "subdir", "align": "left", "sortable": True},
                         {"name": "reason", "label": "Sebep", "field": "reason", "align": "left", "sortable": True},
                         {"name": "blur", "label": "Blur", "field": "blur", "align": "right", "sortable": True},
                         {"name": "bright", "label": "Bright", "field": "bright", "align": "right", "sortable": True},
                         {"name": "contrast", "label": "Contrast", "field": "contrast", "align": "right", "sortable": True},
                         {"name": "bpp", "label": "BPP", "field": "bpp", "align": "right", "sortable": True},
+                        {"name": "bpp_color", "label": "Kalite", "field": "bpp_color", "align": "left"},
                     ],
                     rows=[],
                     pagination=10,
@@ -2280,6 +2282,41 @@ def build_quality_tab():
             except (TypeError, ValueError):
                 return str(v)
 
+        def _q_extract_subdir(abs_path: str) -> str:
+            """v1.1+ regression: r['path'] absolute → dataset relative subdir."""
+            if not abs_path or not STATE.dataset_path:
+                return "—"
+            try:
+                rel = Path(abs_path).relative_to(Path(STATE.dataset_path).resolve())
+                parent = str(rel.parent)
+                return "—" if parent == "." else parent
+            except (ValueError, OSError):
+                return "—"
+
+        def _q_bpp_indicator(r: dict) -> str:
+            """BPP renk-aware kısa etiket (kalite kolonu için)."""
+            bpp = r.get("bpp_score")
+            if bpp is None:
+                return "—"
+            try:
+                bpp_v = float(bpp)
+            except (TypeError, ValueError):
+                return "—"
+            if bpp_v < 0.05:
+                return "🔴 DQ"
+            if bpp_v < 0.5:
+                return "🟡 düşük"
+            return "🟢 OK"
+
+        def _maybe_warn_full_rejection(sr):
+            """Threshold çok sıkıysa kullanıcıyı uyar (validator pattern'i)."""
+            if sr.total_scanned > 0 and sr.invalid_count == sr.total_scanned:
+                ui.notify(
+                    "⚠ %100 reddedildi — threshold'larınız çok sıkı olabilir. "
+                    "Threshold ayarlarını gevşetip tekrar deneyin.",
+                    type="warning", timeout=8000,
+                )
+
         def _populate_results(sr, action_msg: str = ""):
             total_card.set_text(str(sr.total_scanned))
             valid_card.set_text(str(sr.valid_count))
@@ -2309,11 +2346,13 @@ def build_quality_tab():
             invalid_table.rows = [
                 {
                     "filename": r.get("filename", ""),
+                    "subdir": _q_extract_subdir(r.get("path", "")),
                     "reason": r.get("reason", ""),
                     "blur": _fmt(r.get("blur_score")),
                     "bright": _fmt(r.get("brightness_score")),
                     "contrast": _fmt(r.get("contrast_score")),
                     "bpp": _fmt(r.get("bpp_score")),
+                    "bpp_color": _q_bpp_indicator(r),
                 }
                 for r in sr.results if not r.get("valid")
             ]
@@ -2340,19 +2379,17 @@ def build_quality_tab():
                 config = _build_config()
                 checks = _enabled_checks()
 
-                # NiceGUI loop'a soluk verecek progress callback
-                last_update = [0]
+                # Progress callback — scanner'dan UI'a güncelleme
                 def _cb(current: int, total: int, msg: str):
                     if total > 0:
                         progress_bar.set_value(current / total)
                     progress_label.set_text(msg)
 
                 await asyncio.sleep(0)
-                # find_quality_issues blocking — UI thread'i bloklar; chunk halinde
-                # işlemek için scanner'ın progress_cb'si var ama callback senkron
-                # blocking yine de. Lite dataset'te OK, büyük için ileride
-                # asyncio.to_thread() ile sarmalanabilir.
-                sr = find_quality_issues(
+                # asyncio.to_thread ile non-blocking — UI thread serbest kalır,
+                # büyük dataset'te (10k+ dosya) responsive
+                sr = await asyncio.to_thread(
+                    find_quality_issues,
                     STATE.dataset_path,
                     config=config,
                     checks=checks,
@@ -2370,8 +2407,10 @@ def build_quality_tab():
                         sr.invalid_count,
                         on_confirm=lambda: _execute_action(sr, action),
                     )
+                    _maybe_warn_full_rejection(sr)
                     return
                 _execute_action(sr, action)
+                _maybe_warn_full_rejection(sr)
 
             except Exception as e:
                 ui.notify(f"Quality check hatası: {e}", type="negative")
