@@ -40,7 +40,6 @@ Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk 
 - Header / EOF kontrolü (corrupt image detection)
 - Format whitelist (jpg, png, webp, tiff, vb.)
 - Batch / async tarama
-- n8n entegrasyonu
 
 ---
 
@@ -58,7 +57,6 @@ Format ve dosya bütünlüğü kontrolü. Pipeline'ın ilk savunması — bozuk 
 - keep_strategy: largest / smallest / first / best
 - Multi-threaded (ThreadPoolExecutor)
 - Gradio dashboard ile manuel review
-- n8n workflow şablonları
 
 ---
 

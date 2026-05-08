@@ -9,7 +9,6 @@ dataset-prep meta repo dokümantasyonu.
 | [pipeline-overview.md](pipeline-overview.md) | 7 aşamalı pipeline akışı + tasarım prensipleri |
 | [architecture.md](architecture.md) | Niçin polyrepo + uv workspace tercih edildi |
 | [tool-list.md](tool-list.md) | Her tool'un detay açıklaması (özellikler, port, tip) |
-| [n8n-integration.md](n8n-integration.md) | n8n workflow otomasyon rehberi |
 
 ## Tool-Spesifik Dokümantasyon
 

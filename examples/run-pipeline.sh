@@ -2,7 +2,7 @@
 # dataset-prep/examples/run-pipeline.sh
 # End-to-end pipeline örneği (sample-dataset/ üzerinde)
 #
-# Bu script tool'ları manuel çalıştırma örneği. Üretim için n8n-workflows/ kullanın.
+# Bu script tool'ları manuel çalıştırma örneği. İnteraktif review için Gradio UI kullanın.
 
 set -euo pipefail
 

@@ -18,7 +18,7 @@ Her tool ayrı GitHub repo'sunda yaşar. Bu repo:
 - 📚 **Pipeline akışını** dökümante eder
 - 🔧 **`make install`** ile 7 tool'u tek komutla kurar
 - 🔄 **uv workspace** ile tek venv altında çalıştırır
-- ⚙️ **n8n workflow** şablonları sağlar
+- 🖥️ **Gradio merkezli UI** ile insan-loop dataset review akışı sunar
 - 🧪 **Örnek pipeline** ile end-to-end demoyu gösterir
 
 ---
@@ -134,7 +134,6 @@ dataset-prep/
 ├── .gitignore             # tools/, .venv/, .env, vb.
 │
 ├── docs/                  # Pipeline rehberleri, mimari kararlar
-├── n8n-workflows/         # Cross-tool n8n şablonları
 ├── examples/              # End-to-end örnek (sahte data)
 │   └── sample-dataset/    # Telif sorunsuz örnek görseller
 │
@@ -210,5 +209,5 @@ Her tool tam belgelenmiştir, kendi başına çalışır.
 
 - [Astral](https://astral.sh) — `uv` ekibinin Python paket yönetimini hızlandırması için
 - [Hugging Face](https://huggingface.co) — Açık model ekosistemi
-- [n8n](https://n8n.io) — Otomasyon altyapısı
+- [Gradio](https://gradio.app) — İnsan-loop UI için
 - [Qwen Team](https://qwenlm.github.io) — VL captioning için Qwen3-VL model serisi
