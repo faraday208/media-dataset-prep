@@ -1465,39 +1465,148 @@ def build_duplicate_tab():
                                 on_click=lambda p=path, i=idx: _set_keeper(i, p),
                             ).props(f"flat dense {keep_btn_color} no-caps")
 
-        def _open_lightbox(path: str):
-            """Tam ekran görüntü modal'ı — yatay/dikey her oran ekrana sığar.
+        def _open_lightbox(start_path: str):
+            """Tam ekran lightbox + carousel — ←/→ ile grup içinde gez, "Bunu tut"
+            ile keeper seç, hepsi tam ekranda. Native <img> + viewport units
+            (Quasar QImg padding-bottom hack'i atlatıldı, dikey/yatay sığıyor)."""
+            sr = tab_state["scan_result"]
+            if sr is None or not sr.groups:
+                return
+            grp = sr.groups[tab_state["current_group_idx"]]
+            files = grp.files
+            if not files:
+                return
+            start_idx = next(
+                (i for i, f in enumerate(files) if f["path"] == start_path), 0
+            )
+            lb_state = {"idx": start_idx}
 
-            Native <img> kullanıyoruz (ui.html ile). NiceGUI ui.image Quasar
-            QImg'e dönüşüyor — QImg `padding-bottom` ile aspect zorlamasını
-            div parent'a uyguluyor, max-h-screen ile çakışıyor (dikey görseller
-            yatay parent'a yayılıyordu). Native <img> + object-fit: contain +
-            viewport-relative max boyutlar = temiz çözüm.
-            """
-            url = _path_to_url(path)
             with ui.dialog().props("maximized") as dlg, ui.card().classes(
                 "w-full h-screen p-0 bg-black overflow-hidden"
             ):
                 with ui.column().classes(
                     "w-full h-full items-center justify-center relative"
                 ):
-                    ui.html(
-                        f'<img src="{url}" '
-                        f'style="max-width: 100vw; max-height: 100vh; '
-                        f'width: auto; height: auto; '
-                        f'object-fit: contain; display: block;">'
-                    )
-                    # Üst overlay: filename + size + close
+                    # Image holder — set_content ile güncelleniyor
+                    img_html = ui.html("")
+
+                    # Üst overlay: filename + counter + keep + close
                     with ui.row().classes(
                         "absolute top-2 left-2 right-2 items-center gap-2 z-10"
                     ):
-                        ui.label(Path(path).name).classes(
+                        title_label = ui.label("").classes(
                             "text-white text-sm bg-black/60 px-3 py-1 rounded font-mono"
                         )
+                        info_label = ui.label("").classes(
+                            "text-white text-xs bg-black/60 px-2 py-1 rounded"
+                        )
                         ui.space()
-                        ui.button(
-                            icon="close", on_click=dlg.close
-                        ).props("flat round color=white").tooltip("Kapat (Esc)")
+                        keeper_badge = ui.label("").classes(
+                            "text-white text-xs px-3 py-1 rounded"
+                        )
+                        keep_btn = ui.button("Bunu tut").props(
+                            "color=positive no-caps"
+                        )
+                        ui.button(icon="close", on_click=dlg.close).props(
+                            "flat round color=white"
+                        ).tooltip("Kapat (Esc)")
+
+                    # Sol-sağ navigation (sadece >1 dosya varsa)
+                    if len(files) > 1:
+                        ui.button(icon="chevron_left").props(
+                            "fab-mini color=white text-color=black"
+                        ).classes(
+                            "absolute left-4 top-1/2 -translate-y-1/2 z-10 opacity-80"
+                        ).on("click", lambda: _lb_step(-1))
+                        ui.button(icon="chevron_right").props(
+                            "fab-mini color=white text-color=black"
+                        ).classes(
+                            "absolute right-4 top-1/2 -translate-y-1/2 z-10 opacity-80"
+                        ).on("click", lambda: _lb_step(1))
+
+                    # Alt overlay: dosya sayacı + nav hint
+                    with ui.row().classes(
+                        "absolute bottom-2 left-1/2 -translate-x-1/2 "
+                        "items-center gap-2 z-10"
+                    ):
+                        counter_label = ui.label("").classes(
+                            "text-white text-sm bg-black/60 px-3 py-1 rounded font-mono"
+                        )
+                        if len(files) > 1:
+                            ui.label("← → / klavye okları").classes(
+                                "text-white text-xs bg-black/40 px-2 py-1 rounded"
+                            )
+
+                    def _render():
+                        f = files[lb_state["idx"]]
+                        path = f["path"]
+                        url = _path_to_url(path)
+                        w, h = f.get("width", 0), f.get("height", 0)
+                        sz = f.get("size_bytes", 0)
+                        title_label.set_text(Path(path).name)
+                        info_parts = []
+                        if w and h:
+                            info_parts.append(f"{w}×{h}")
+                        info_parts.append(dedup_humanize_bytes(sz))
+                        if "distance" in f:
+                            info_parts.append(f"d={f['distance']}")
+                        info_label.set_text(" · ".join(info_parts))
+
+                        # Keeper indicator
+                        manual = tab_state["manual_keepers"].get(
+                            tab_state["current_group_idx"]
+                        )
+                        is_keeper = (path == (manual or grp.kept))
+                        if is_keeper:
+                            keeper_badge.set_text("✓ Korunan")
+                            keeper_badge.classes(
+                                replace="bg-green-600 text-white text-xs px-3 py-1 rounded"
+                            )
+                            keep_btn.props("color=grey-7 no-caps")
+                            keep_btn.set_text("Korunuyor")
+                            keep_btn.disable()
+                        else:
+                            keeper_badge.set_text("")
+                            keep_btn.props("color=positive no-caps")
+                            keep_btn.set_text("Bunu tut")
+                            keep_btn.enable()
+
+                        counter_label.set_text(
+                            f"{lb_state['idx'] + 1} / {len(files)}"
+                        )
+                        img_html.set_content(
+                            f'<img src="{url}" '
+                            f'style="max-width: 100vw; max-height: 100vh; '
+                            f'width: auto; height: auto; '
+                            f'object-fit: contain; display: block;">'
+                        )
+
+                    def _lb_step(delta: int):
+                        lb_state["idx"] = (lb_state["idx"] + delta) % len(files)
+                        _render()
+
+                    def _lb_keep():
+                        path = files[lb_state["idx"]]["path"]
+                        _set_keeper(tab_state["current_group_idx"], path)
+                        _render()  # badge + buton update
+
+                    keep_btn.on("click", _lb_keep)
+
+                    # Klavye desteği
+                    def _on_key(e):
+                        if not e.action.keydown:
+                            return
+                        if e.key.arrow_left:
+                            _lb_step(-1)
+                        elif e.key.arrow_right:
+                            _lb_step(1)
+                        elif e.key.enter:
+                            _lb_keep()
+
+                    keyboard = ui.keyboard(on_key=_on_key, active=True)
+                    dlg.on("hide", lambda: setattr(keyboard, "active", False))
+
+                    _render()
             dlg.open()
 
         def _set_keeper(group_idx: int, path: str):
