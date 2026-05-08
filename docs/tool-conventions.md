@@ -6,8 +6,9 @@
 **Kapsam:** 8 tool (`media-dataset-prep` workspace member'ları). UI tarafı bu
 sözleşmelere güvenerek wire-up yapar.
 
-**Statü:** v1 — organizer (v0.5.1), media-validator (v0.3.0) ve media-deduplicator
-(v1.2.0) bu pattern'i kuruyor. Diğer 5 tool sırayla uyumlandırılacak.
+**Statü:** v1 — organizer (v0.5.1), media-validator (v0.3.0), media-deduplicator
+(v1.2.0) ve media-quality-checker (v1.0.0) bu pattern'i kuruyor. Diğer 4 tool
+sırayla uyumlandırılacak.
 
 ---
 

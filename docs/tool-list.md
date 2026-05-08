@@ -41,8 +41,8 @@ Manuel review meta'nın Gradio UI'ında yapılır.
 
 ---
 
-### 03 — image-quality-checker
-**GitHub:** https://github.com/faraday208/image-quality-checker
+### 03 — media-quality-checker
+**GitHub:** https://github.com/faraday208/media-quality-checker
 **Tip:** Python kütüphanesi + CLI
 
 Görsel kalite metrikleri (blur, brightness, contrast, BPP, EXIF). 4-pass JSON sistemi. Rapor görüntüleyici meta'nın Gradio UI'ında.

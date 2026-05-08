@@ -36,7 +36,7 @@ Pipeline 7 ardışık aşamadan oluşur. Her aşama bağımsız çalışabilir, 
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [03] image-quality-checker                                  │
+│  [03] media-quality-checker                                  │
 │  - Blur tespiti (Laplacian variance)                         │
 │  - Brightness/contrast histogramı                            │
 │  - Çözünürlük / aspect ratio                                 │
