@@ -1,0 +1,56 @@
+# Tools — polyrepo: her tool bağımsız repo (kardeş klasör veya GitHub'dan).
+# tools/ sadece runtime mount noktası; symlink/clone'lar git'e girmez.
+tools/*
+!tools/.gitkeep
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# uv
+uv.lock
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Runtime çıktıları
+*.log
+logs/
+reports/
+flagged/
+.streamlit/secrets.toml
+
+# Datasets (büyük binary)
+data/
+datasets/
+*.tar
+*.zip
+*.7z
+
+# Modeller (asla repo'da değil — /mnt/storage/Models/ altında)
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# OS
+Thumbs.db
+ehthumbs.db
