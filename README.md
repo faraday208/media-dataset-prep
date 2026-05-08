@@ -148,6 +148,10 @@ media-dataset-prep/
 ├── .gitignore             # tools/, .venv/, .env, vb.
 │
 ├── docs/                  # Pipeline rehberleri, mimari kararlar
+│   ├── tool-list.md       # 8 tool'un meta seviyede özeti
+│   ├── pipeline-overview.md
+│   ├── architecture.md
+│   └── roadmap.md         # ⭐ Sıradaki iş, durum tablosu, v0.2 hedefleri
 ├── examples/              # End-to-end örnek (sahte data)
 │   └── sample-dataset/    # Telif sorunsuz örnek görseller
 │
