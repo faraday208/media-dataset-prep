@@ -1,0 +1,50 @@
+[project]
+name = "dataset-prep"
+version = "0.1.0"
+description = "Meta-orchestrator for AI image dataset preparation pipeline"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "faraday208" },
+]
+
+# Meta-orchestrator: tüm pipeline tool'larını dependency olarak topluyor.
+# uv sync ile her tool'un dependencies'i tek .venv altında kurulur.
+# Her tool tools/ altında symlink (development) veya clone (production) olarak yaşar.
+dependencies = [
+    "media-organizer",
+    "image-validator",
+    "duplicate-image-finder",
+    "image-quality-checker",
+    "watermark-detection",
+    "image-resizer",
+    "image-captioner",
+    "golden-set-generator",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "tools/00-organize",
+    "tools/01-validate",
+    "tools/02-duplicate",
+    "tools/03-quality",
+    "tools/04-watermark",
+    "tools/05-resize",
+    "tools/06-caption",
+    "tools/07-golden-set",
+]
+
+# Workspace member'lara isim üzerinden bağlan
+[tool.uv.sources]
+media-organizer = { workspace = true }
+image-validator = { workspace = true }
+duplicate-image-finder = { workspace = true }
+image-quality-checker = { workspace = true }
+watermark-detection = { workspace = true }
+image-resizer = { workspace = true }
+image-captioner = { workspace = true }
+golden-set-generator = { workspace = true }
