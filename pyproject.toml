@@ -28,7 +28,7 @@ dev = [
     "pytest>=8.0",
 ]
 ui = [
-    "nicegui>=2.0",
+    "nicegui>=3.0",
 ]
 
 [tool.pytest.ini_options]
