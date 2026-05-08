@@ -88,3 +88,95 @@ def test_pipeline_state_validity(tmp_path):
     assert not s.is_valid_dataset()
     s.dataset_path = str(tmp_path)
     assert s.is_valid_dataset()
+
+
+# ---------- _aspect_label ----------
+
+def test_aspect_label_common_ratios():
+    import ui
+    assert ui._aspect_label(1920, 1080) == "16:9"
+    assert ui._aspect_label(1080, 1920) == "9:16"
+    assert ui._aspect_label(1024, 768) == "4:3"
+    assert ui._aspect_label(768, 1024) == "3:4"
+    assert ui._aspect_label(1024, 1024) == "1:1"
+    assert ui._aspect_label(1500, 1000) == "3:2"
+    assert ui._aspect_label(1000, 1500) == "2:3"
+
+
+def test_aspect_label_within_tolerance():
+    """%2 tolerans ile yaygın oranlar yakalanır."""
+    import ui
+    # 1918×1080 ≈ 16:9 (1.776 vs 1.778, %0.1 fark)
+    assert ui._aspect_label(1918, 1080) == "16:9"
+    # 920×1240 ≈ 3:4 (0.7419 vs 0.75, %1.1 fark)
+    assert ui._aspect_label(920, 1240) == "3:4"
+
+
+def test_aspect_label_decimal_fallback():
+    """Tolerans dışı oranlar decimal döner."""
+    import ui
+    # 1234×567 → 2.18:1 (yaygın preset değil)
+    assert ui._aspect_label(1234, 567) == "2.18:1"
+
+
+def test_aspect_label_zero_dimensions():
+    import ui
+    assert ui._aspect_label(0, 0) == ""
+    assert ui._aspect_label(100, 0) == ""
+    assert ui._aspect_label(0, 100) == ""
+
+
+# ---------- _bpp_label ----------
+
+def test_bpp_label_thresholds_ai_aware():
+    """AI-odaklı eşikler (FULL_SCORE_BPP=0.5)."""
+    import ui
+    # ≥ 0.5 → yeşil
+    label, color = ui._bpp_label(1024, 1024, 600_000)  # BPP ~0.57
+    assert "BPP 0.572" in label
+    assert "green" in color
+    # 0.05 ≤ BPP < 0.5 → sarı
+    label, color = ui._bpp_label(1024, 1024, 200_000)  # BPP ~0.19
+    assert "yellow" in color
+    assert "⚠" not in label
+    # < 0.05 → kırmızı + ⚠
+    label, color = ui._bpp_label(1024, 1024, 30_000)  # BPP ~0.029
+    assert "red" in color
+    assert "⚠" in label
+
+
+def test_bpp_label_zero_dimensions_returns_none():
+    import ui
+    assert ui._bpp_label(0, 0, 1000) is None
+    assert ui._bpp_label(100, 0, 1000) is None
+    assert ui._bpp_label(100, 100, 0) is None
+
+
+# ---------- _path_to_url ----------
+
+def test_path_to_url_prefixes_fs_mount(tmp_path):
+    import ui
+    p = tmp_path / "x.jpg"
+    p.write_bytes(b"")
+    url = ui._path_to_url(str(p))
+    assert url.startswith("/fs/")
+    assert url.endswith("/x.jpg")
+
+
+# ---------- step_status ----------
+
+def test_step_status_pending_when_no_report(tmp_path):
+    import ui
+    ui.STATE.reset_callbacks()
+    ui.STATE.last_report_paths = {}
+    assert ui.step_status(0) == "○"  # pending
+
+
+def test_step_status_done_when_report_exists(tmp_path):
+    import ui
+    report = tmp_path / "rename_report.json"
+    report.write_text("{}")
+    ui.STATE.last_report_paths = {0: str(report)}
+    assert ui.step_status(0) == "✓"
+    # Cleanup
+    ui.STATE.last_report_paths = {}

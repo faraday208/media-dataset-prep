@@ -11,7 +11,6 @@ her adım kendi tool'unu in-process import eder ve sonuçları görselleştirir.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 from collections import Counter
