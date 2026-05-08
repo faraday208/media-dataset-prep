@@ -4,10 +4,10 @@ Pipeline'ın 8 modülü (00-07).
 
 ## Pipeline Tools
 
-### 00 — media-renamer
-**GitHub:** https://github.com/faraday208/media-renamer
-**Tip:** CLI + Python kütüphanesi (tek dosya: `media_renamer.py`)
-**Konum:** `tools/00-rename/`
+### 00 — media-organizer
+**GitHub:** https://github.com/faraday208/media-organizer
+**Tip:** CLI + Python kütüphanesi (tek dosya: `media_organizer.py`)
+**Konum:** `tools/00-organize/`
 
 Pipeline'ın 0. adımı — dağınık dosya isimlerini düzenli numaralandırır. Ham veri pipeline'a girmeden önce bu adımdan geçer.
 
@@ -20,7 +20,7 @@ Pipeline'ın 0. adımı — dağınık dosya isimlerini düzenli numaralandırı
 
 **Kullanım:**
 ```bash
-python tools/00-rename/media_renamer.py /path/to/folder --prefix "MyDataset" --dry-run
+python tools/00-organize/media_organizer.py /path/to/folder --prefix "MyDataset" --dry-run
 ```
 
 **Niçin pipeline'ın 0. adımı?**
