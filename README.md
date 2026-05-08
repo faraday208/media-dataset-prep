@@ -55,7 +55,7 @@ Eğitime hazır dataset
 |---|---|---|---|
 | 00 | **media-organizer** | [github](https://github.com/faraday208/media-organizer) | Library + CLI |
 | 01 | **media-validator** | [github](https://github.com/faraday208/media-validator) | Library + CLI |
-| 02 | **duplicate-image-finder** | [github](https://github.com/faraday208/duplicate-image-finder) | Library + CLI |
+| 02 | **media-deduplicator** | [github](https://github.com/faraday208/media-deduplicator) | Library + CLI |
 | 03 | **image-quality-checker** | [github](https://github.com/faraday208/image-quality-checker) | Library + CLI |
 | 04 | **watermark-detection** | [github](https://github.com/faraday208/watermark-detection) | Library + CLI + YOLOv8 |
 | 05 | **image-resizer** | [github](https://github.com/faraday208/image-resizer) | Library + CLI |
@@ -129,7 +129,7 @@ adımlarında.
 | **Meta + uv workspace** ⭐ | Bağımsız tool'lar + tek kurulum + tek venv |
 
 ### Avantajlar
-- **Bağımsız tool kullanımı:** Sadece `duplicate-image-finder` lazımsa onu clone'la, kullan
+- **Bağımsız tool kullanımı:** Sadece `media-deduplicator` lazımsa onu clone'la, kullan
 - **Tek venv:** `uv sync` 10 saniyede tüm pipeline'ı çalışır hale getirir
 - **Bağımsız sürüm:** Her tool kendi `v1.2.3` etiketiyle ilerler
 - **Topluluk dostu:** Issue/PR doğrudan ilgili tool'a açılır, karmaşa yok
@@ -163,7 +163,7 @@ media-dataset-prep/
 └── tools/                 # (gitignored) install-tools.sh ile dolar
     ├── 00-organize/       # → media-organizer
     ├── 01-validate/       # → media-validator
-    ├── 02-duplicate/      # → duplicate-image-finder
+    ├── 02-duplicate/      # → media-deduplicator
     └── ...
 ```
 
@@ -204,8 +204,8 @@ Her tool tam belgelenmiştir, kendi başına çalışır.
 5. `tools/05-resize/` ile standartlaştır
 
 ### Senaryo 3: Tek tool ihtiyacı
-1. `git clone github.com/faraday208/duplicate-image-finder`
-2. `cd duplicate-image-finder && uv sync`
+1. `git clone github.com/faraday208/media-deduplicator`
+2. `cd media-deduplicator && uv sync`
 3. Çalıştır — media-dataset-prep meta'ya gerek yok
 
 ---

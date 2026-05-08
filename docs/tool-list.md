@@ -29,8 +29,8 @@ Format ve dosya bütünlüğü kontrolü (MIME-type, header/EOF, format whitelis
 
 ---
 
-### 02 — duplicate-image-finder
-**GitHub:** https://github.com/faraday208/duplicate-image-finder
+### 02 — media-deduplicator
+**GitHub:** https://github.com/faraday208/media-deduplicator
 **Tip:** Python kütüphanesi + CLI
 
 İki tip kopya tespiti:

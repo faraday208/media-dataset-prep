@@ -28,7 +28,7 @@ Pipeline 7 ardışık aşamadan oluşur. Her aşama bağımsız çalışabilir, 
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [02] duplicate-image-finder                                 │
+│  [02] media-deduplicator                                 │
 │  - Birebir kopya: MD5 hash                                   │
 │  - Benzer kopya: perceptual hash (phash, ahash, dhash)       │
 │  - keep_strategy: largest / smallest / first / best          │
