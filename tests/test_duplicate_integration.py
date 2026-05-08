@@ -21,9 +21,9 @@ TOOLS_DUPLICATE = REPO_ROOT / "tools" / "02-duplicate"
 def test_duplicate_tool_present():
     assert TOOLS_DUPLICATE.exists()
     assert (TOOLS_DUPLICATE / "run.py").is_file()
-    assert (TOOLS_DUPLICATE / "core" / "scanner.py").is_file()
-    assert (TOOLS_DUPLICATE / "core" / "actions.py").is_file()
-    assert (TOOLS_DUPLICATE / "core" / "reporter.py").is_file()
+    assert (TOOLS_DUPLICATE / "dedup_core" / "scanner.py").is_file()
+    assert (TOOLS_DUPLICATE / "dedup_core" / "actions.py").is_file()
+    assert (TOOLS_DUPLICATE / "dedup_core" / "reporter.py").is_file()
 
 
 def test_duplicate_tool_pyproject_declares_expected_name():
@@ -40,7 +40,7 @@ def test_duplicate_tool_pyproject_declares_expected_name():
 def test_duplicate_tool_importable_via_workspace():
     sys.path.insert(0, str(TOOLS_DUPLICATE))
     try:
-        from core import (  # noqa: F401
+        from dedup_core import (  # noqa: F401
             find_exact_duplicates,
             find_similar_images,
             apply_action,
