@@ -1466,15 +1466,26 @@ def build_duplicate_tab():
                             ).props(f"flat dense {keep_btn_color} no-caps")
 
         def _open_lightbox(path: str):
-            """Tam ekran görüntü modal'ı — dikey resimleri tüm yükseklikle göster."""
+            """Tam ekran görüntü modal'ı — yatay/dikey her oran ekrana sığar.
+
+            Native <img> kullanıyoruz (ui.html ile). NiceGUI ui.image Quasar
+            QImg'e dönüşüyor — QImg `padding-bottom` ile aspect zorlamasını
+            div parent'a uyguluyor, max-h-screen ile çakışıyor (dikey görseller
+            yatay parent'a yayılıyordu). Native <img> + object-fit: contain +
+            viewport-relative max boyutlar = temiz çözüm.
+            """
+            url = _path_to_url(path)
             with ui.dialog().props("maximized") as dlg, ui.card().classes(
-                "w-full h-screen p-0 bg-black"
+                "w-full h-screen p-0 bg-black overflow-hidden"
             ):
                 with ui.column().classes(
                     "w-full h-full items-center justify-center relative"
                 ):
-                    ui.image(_path_to_url(path)).classes(
-                        "max-w-full max-h-screen object-contain"
+                    ui.html(
+                        f'<img src="{url}" '
+                        f'style="max-width: 100vw; max-height: 100vh; '
+                        f'width: auto; height: auto; '
+                        f'object-fit: contain; display: block;">'
                     )
                     # Üst overlay: filename + size + close
                     with ui.row().classes(
