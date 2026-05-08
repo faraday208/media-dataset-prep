@@ -39,7 +39,7 @@ Tool repos açıldıkça `run-pipeline.sh` somut komutlarla güncellenir. Şu an
 ```bash
 ./examples/run-pipeline.sh
 # Şu an output:
-# "Adım 1/7: image-validator
+# "Adım 1/7: media-validator
 #   cd tools/01-validate && python run.py ..."
 ```
 

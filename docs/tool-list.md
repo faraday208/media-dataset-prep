@@ -21,8 +21,8 @@ Validate (01), duplicate (02), caption (06) gibi adımlar düzenli isimlendirme 
 
 ---
 
-### 01 — image-validator
-**GitHub:** https://github.com/faraday208/image-validator
+### 01 — media-validator
+**GitHub:** https://github.com/faraday208/media-validator
 **Tip:** Python kütüphanesi + CLI
 
 Format ve dosya bütünlüğü kontrolü (MIME-type, header/EOF, format whitelist). Pipeline'ın ilk savunması — bozuk veya yanlış format dosyalar buradan geri döner.
