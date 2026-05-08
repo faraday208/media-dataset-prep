@@ -12,8 +12,8 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 | # | Tool | Tool sürümü | Conventions | Meta UI | Notlar |
 |---|---|---|---|---|---|
 | 00 | media-organizer | **v0.5.1** ✓ | ✓ | **wired** ✓ | CLI parity %100; recursive flat/tree, undo + cleanup |
-| 01 |  media-validator | **v0.3.1** ✓ | ✓ | stub | paket adı (image→media), v0.2.1 bug fix dahil, 43 unit test |
-| 02 | media-deduplicator | **v1.2.0** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri (FULL_SCORE=0.5), gallery + lightbox + zoom + carousel, 65 test |
+| 01 | media-validator | **v0.3.1** ✓ | ✓ | stub | paket adı (image→media), v0.2.1 bug fix dahil, 43 unit test |
+| 02 | media-deduplicator | **v1.2.1** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri, gallery + lightbox + zoom + carousel, 65 test |
 | 03 | media-quality-checker | **v1.0.0** ✓ | ✓ | stub | clean release: tek run.py, 4 composite check (blur/brightness/contrast/bpp), action+undo, 44 test |
 | 04 | watermark-detection | — | ? | stub | YOLOv8; tool'un kendi Gradio UI'ı var (port 8300) |
 | 05 | image-resizer | — | ? | stub | Lanczos batch; review değeri düşük |
