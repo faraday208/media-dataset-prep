@@ -1175,6 +1175,29 @@ def _path_to_url(path: str) -> str:
     return f"/fs{p}"
 
 
+def _bpp_label(width: int, height: int, size_bytes: int) -> tuple[str, str] | None:
+    """BPP (bytes per pixel) etiketi + Tailwind renk class.
+
+    BPP eşikleri (core/actions.py BEST stratejisiyle aynı):
+    - < 0.05  → red    (DİSKALİFİYE — artifact dolu)
+    - < 0.15  → yellow (orantılı ceza — düşük quality)
+    - ≥ 0.15  → green  (tam puan — normal/yüksek quality)
+    """
+    if not (width and height) or size_bytes <= 0:
+        return None
+    bpp = size_bytes / (width * height)
+    if bpp < 0.05:
+        color = "text-red-600"
+        suffix = " ⚠"
+    elif bpp < 0.15:
+        color = "text-yellow-600"
+        suffix = ""
+    else:
+        color = "text-green-600"
+        suffix = ""
+    return f"BPP {bpp:.3f}{suffix}", color
+
+
 def build_duplicate_tab():
     """02 — Duplicate: exact/similar tarama + pair-wise gallery review + action + undo."""
     # Tab-local state — tab her render edildiğinde sıfırlanır
@@ -1468,7 +1491,8 @@ def build_duplicate_tab():
                                 ).props("flat dense size=sm color=grey-7").tooltip("Aç")
 
                             # Resolution + size + (similar mode'da distance)
-                            info_parts = [dedup_humanize_bytes(f.get("size_bytes", 0))]
+                            sz = f.get("size_bytes", 0)
+                            info_parts = [dedup_humanize_bytes(sz)]
                             w, h = f.get("width", 0), f.get("height", 0)
                             if w and h:
                                 info_parts.insert(0, f"{w}×{h}")
@@ -1477,6 +1501,16 @@ def build_duplicate_tab():
                             ui.label(" · ".join(info_parts)).classes(
                                 "text-xs text-slate-600"
                             )
+                            # BPP — renkli (kalite göstergesi)
+                            bpp_info = _bpp_label(w, h, sz)
+                            if bpp_info:
+                                bpp_text, bpp_color = bpp_info
+                                ui.label(bpp_text).classes(
+                                    f"text-xs font-mono {bpp_color}"
+                                ).tooltip(
+                                    "Bytes per pixel — yüksek = daha kaliteli "
+                                    "(< 0.05 artifact, ≥ 0.15 normal+)"
+                                )
                             keep_btn_label = "✓ Korunan" if is_keeper else "Bunu tut"
                             keep_btn_color = "color=positive" if is_keeper else "color=grey-7"
                             ui.button(
@@ -1521,6 +1555,9 @@ def build_duplicate_tab():
                         )
                         info_label = ui.label("").classes(
                             "text-white text-xs bg-black/60 px-2 py-1 rounded"
+                        )
+                        bpp_label_widget = ui.label("").classes(
+                            "text-xs px-2 py-1 rounded bg-black/60"
                         )
                         ui.space()
                         # Zoom kontrolleri
@@ -1599,6 +1636,27 @@ def build_duplicate_tab():
                         if "distance" in f:
                             info_parts.append(f"d={f['distance']}")
                         info_label.set_text(" · ".join(info_parts))
+
+                        # BPP — kalite göstergesi (renkli)
+                        bpp_info = _bpp_label(w, h, sz)
+                        if bpp_info:
+                            bpp_text, bpp_color_class = bpp_info
+                            bpp_label_widget.set_text(bpp_text)
+                            # Renk + bg birlikte (overlay için kontrast)
+                            bpp_label_widget.classes(
+                                replace=(
+                                    f"{bpp_color_class} bg-white/90 "
+                                    "text-xs px-2 py-1 rounded font-mono font-semibold"
+                                )
+                            )
+                            bpp_label_widget.tooltip(
+                                "Bytes per pixel — yüksek = daha kaliteli\n"
+                                "< 0.05: artifact dolu (DQ)\n"
+                                "0.05-0.15: düşük quality\n"
+                                "≥ 0.15: normal/yüksek"
+                            )
+                        else:
+                            bpp_label_widget.set_text("")
 
                         # Zoom — fit (ekrana sığar) veya natural × ratio (scrollable)
                         z = lb_state["zoom"]
