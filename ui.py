@@ -1426,18 +1426,33 @@ def build_duplicate_tab():
                                if is_keeper else "border-slate-200")
                         )
                         with ui.column().classes(card_classes):
+                            # Thumbnail — tıklayınca lightbox modal aç
                             try:
-                                ui.image(_path_to_url(path)).classes(
-                                    "w-full h-48 object-contain bg-slate-100"
+                                img_widget = ui.image(_path_to_url(path)).classes(
+                                    "w-full h-72 object-contain bg-slate-100 cursor-pointer "
+                                    "hover:opacity-90 transition"
                                 )
+                                img_widget.on(
+                                    "click", lambda _e, p=path: _open_lightbox(p)
+                                )
+                                img_widget.tooltip("Büyük görüntü için tıkla")
                             except Exception:
                                 ui.label("(önizleme yok)").classes("text-xs text-slate-400")
-                            ui.label(Path(path).name).classes(
-                                "text-xs font-mono truncate"
-                            ).tooltip(path)
-                            info_parts = [
-                                dedup_humanize_bytes(f.get("size_bytes", 0))
-                            ]
+
+                            with ui.row().classes("w-full items-center gap-1"):
+                                ui.label(Path(path).name).classes(
+                                    "text-xs font-mono truncate flex-grow"
+                                ).tooltip(path)
+                                ui.button(
+                                    icon="open_in_new",
+                                    on_click=lambda p=path: _open_lightbox(p),
+                                ).props("flat dense size=sm color=grey-7").tooltip("Aç")
+
+                            # Resolution + size + (similar mode'da distance)
+                            info_parts = [dedup_humanize_bytes(f.get("size_bytes", 0))]
+                            w, h = f.get("width", 0), f.get("height", 0)
+                            if w and h:
+                                info_parts.insert(0, f"{w}×{h}")
                             if "distance" in f:
                                 info_parts.append(f"d={f['distance']}")
                             ui.label(" · ".join(info_parts)).classes(
@@ -1449,6 +1464,30 @@ def build_duplicate_tab():
                                 keep_btn_label,
                                 on_click=lambda p=path, i=idx: _set_keeper(i, p),
                             ).props(f"flat dense {keep_btn_color} no-caps")
+
+        def _open_lightbox(path: str):
+            """Tam ekran görüntü modal'ı — dikey resimleri tüm yükseklikle göster."""
+            with ui.dialog().props("maximized") as dlg, ui.card().classes(
+                "w-full h-screen p-0 bg-black"
+            ):
+                with ui.column().classes(
+                    "w-full h-full items-center justify-center relative"
+                ):
+                    ui.image(_path_to_url(path)).classes(
+                        "max-w-full max-h-screen object-contain"
+                    )
+                    # Üst overlay: filename + size + close
+                    with ui.row().classes(
+                        "absolute top-2 left-2 right-2 items-center gap-2 z-10"
+                    ):
+                        ui.label(Path(path).name).classes(
+                            "text-white text-sm bg-black/60 px-3 py-1 rounded font-mono"
+                        )
+                        ui.space()
+                        ui.button(
+                            icon="close", on_click=dlg.close
+                        ).props("flat round color=white").tooltip("Kapat (Esc)")
+            dlg.open()
 
         def _set_keeper(group_idx: int, path: str):
             tab_state["manual_keepers"][group_idx] = path
