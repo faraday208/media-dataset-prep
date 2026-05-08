@@ -20,7 +20,7 @@ dependencies = [
     "media-watermark-detector",
     "media-resizer",
     "media-captioner",
-    "golden-set-generator",
+    "media-golden-set",
 ]
 
 [dependency-groups]
@@ -62,4 +62,4 @@ media-quality-checker = { workspace = true }
 media-watermark-detector = { workspace = true }
 media-resizer = { workspace = true }
 media-captioner = { workspace = true }
-golden-set-generator = { workspace = true }
+media-golden-set = { workspace = true }

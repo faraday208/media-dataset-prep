@@ -84,6 +84,7 @@ def test_caption_export_e2e_no_ollama(tmp_path):
 
 def test_caption_run_parser_imports():
     """run.py argparse build edebiliyor — wrapper sağlıklı."""
+    sys.modules.pop("run", None)
     sys.path.insert(0, str(TOOLS_CAPTION))
     try:
         from run import _build_parser
@@ -93,3 +94,4 @@ def test_caption_run_parser_imports():
         assert args.workers >= 1
     finally:
         sys.path.pop(0)
+        sys.modules.pop("run", None)

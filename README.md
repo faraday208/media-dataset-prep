@@ -60,7 +60,7 @@ Eğitime hazır dataset
 | 04 | **media-watermark-detector** | [github](https://github.com/faraday208/media-watermark-detector) | Library + CLI + YOLOv8 |
 | 05 | **media-resizer** | [github](https://github.com/faraday208/media-resizer) | Library + CLI |
 | 06 | **media-captioner** | [github](https://github.com/faraday208/media-captioner) | Library + Ollama client |
-| 07 | **golden-set-generator** | [github](https://github.com/faraday208/golden-set-generator) | Library + CLI |
+| 07 | **media-golden-set** | [github](https://github.com/faraday208/media-golden-set) | Library + CLI |
 
 > Tüm tool'lar Python kütüphanesi olarak `core/` modülünden import edilir; UI katmanı (Gradio) meta-orchestrator'da merkezi olarak yönetilir. CLI'lar power-user/debug için korunmuştur.
 

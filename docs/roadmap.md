@@ -18,7 +18,7 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 | 04 | media-watermark-detector | **v1.0.0** ✓ | ✓ | stub | clean release: YOLOv8 detect + cleanup, scope daraltıldı (inpainting/training silindi), 33 test |
 | 05 | media-resizer | **v1.0.0** ✓ | ✓ | stub | clean release: Lanczos batch (copy/in-place mode), action+undo, 19 test |
 | 06 | media-captioner | **v1.0.0** ✓ | ✓ | stub | clean release: Qwen3-VL 5-pass multi-pass + json→txt export + undo, 14 test |
-| 07 | golden-set-generator | — | ? | stub | manuel cherry-pick; tool'un kendi Gradio UI'ı var |
+| 07 | media-golden-set | **v1.0.0** ✓ | ✓ | stub | clean release: quality+caption-aware cherry-pick (bucket + face-target + character filter), action+undo, 35 test |
 
 ✓ = bitti  ·  ? = denetlenmedi  ·  stub = "coming soon" placeholder  ·  — = bu projede sürüm bilgisi tutulmuyor (tool repo'sundan oku)
 
@@ -48,8 +48,10 @@ Gallery view + metric slider'ları (blur < X, brightness > Y).
 Filter sonucunda kalan görseller. Manuel "drop / keep" toggle'ları.
 
 ### 4. **07 — Golden set**
-Final cherry-pick — büyük gallery + star/label. Tool'un kendi Gradio UI'ı
-var; meta'da ya **replikasyon** ya da **iframe embed** kararı verilmeli.
+Final cherry-pick — büyük gallery + star/label. Tool tarafı v1.0.0'da
+hazır (CLI + library + sidecar JSON + undo); UI form-only olabilir
+(distribution slider + face-target + character + dry-run preview +
+seçim önizleme gallery'si).
 
 ### 5. **01 — Validate** (sıradaki adım — pipeline sırası)
 Tool tarafı v0.2.0'da hazır (move/delete + undo). UI'da form-only:
@@ -61,13 +63,10 @@ bozuk/hatalı dosyalar dedupe'dan önce filtrelenmeli.
 Batch operation, review değeri düşük. UI'da: hedef çözünürlük seç +
 dry-run preview (kaç dosya etkilenecek). 00 organize gibi form-only.
 
-### 7. **04 — Watermark** (karar bekliyor)
-Tool'un kendi Gradio UI'ı zaten review için tasarlanmış (annotation,
-bounding box). Meta UI'da:
-- **A:** Replikasyon — NiceGUI'ye port et (zaman maliyeti yüksek)
-- **B:** Iframe embed — meta tab içinde tool'un kendi UI'ını göster
-- **C:** Link — meta'da sadece "Aç" butonu, tool ayrı pencerede
-B veya C mantıklı; A polyrepo prensibine ters.
+### 7. **04 — Watermark** (form-only)
+Tool v1.0.0 clean release; eski Gradio UI'sı silindi. Meta UI'da
+form-only: model dropdown + confidence slider + action seçimi +
+dry-run preview + invalid table + undo butonu.
 
 ## v0.2 milestone'ları
 
@@ -82,8 +81,6 @@ B veya C mantıklı; A polyrepo prensibine ters.
 
 ## Açık tasarım soruları
 
-- **Tool'a kendi UI'ı varsa (04, 07) ne yapılır?** Replikasyon vs embed vs link.
-  Karar v0.2'de verilebilir.
 - **State persistence nasıl?** Per-dataset JSON (`/dataset/.media-prep-state.json`)
   vs global config (`~/.config/media-dataset-prep/`). İlki taşınabilir,
   ikincisi tek-makine.
@@ -111,3 +108,4 @@ Mevcut tag'ler:
 - `media-watermark-detector/v1.0.0` — clean release: YOLOv8 detection + cleanup, scope daraltıldı (inpainting+training silindi), 33 test (eski `watermark-detection` paketinin yerine)
 - `media-resizer/v1.0.0` — clean release: tek run.py, Lanczos batch (copy/in-place), action+undo, 19 test (eski `image-resizer` paketinin yerine)
 - `media-captioner/v1.0.0` — clean release: 5-pass multi-pass captioning (Qwen3-VL via Ollama), JSON→TXT export, undo, scope daraltıldı (Gradio json-debugger + server scripts + archive silindi), 14 test (eski `image-captioner` paketinin yerine)
+- `media-golden-set/v1.0.0` — clean release: quality+caption-aware cherry-pick (bucket + face-target + character filter), action+undo, scope daraltıldı (Gradio UI silindi), 35 test (eski `golden-set-generator` paketinin yerine)

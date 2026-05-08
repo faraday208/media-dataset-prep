@@ -71,7 +71,7 @@ Pipeline 7 ardışık aşamadan oluşur. Her aşama bağımsız çalışabilir, 
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [07] golden-set-generator                                   │
+│  [07] media-golden-set                                   │
 │  - Manuel cherry-pick UI                                     │
 │  - Filtre + universal selector                               │
 │  - Final dataset için "altın küme" seçimi                    │
