@@ -37,8 +37,7 @@ from validator_core.scanner import (  # noqa: E402
     write_report as validate_write_report,
     DEFAULT_REPORT_NAME as VALIDATE_REPORT_NAME,
 )
-# media-deduplicator (tools/02-duplicate) — `core` paketi adı validator'ın `src` ile
-# çakışmıyor (validator src/, deduplicator core/). Direkt import OK.
+# media-deduplicator (tools/02-duplicate) — dedup_core paketi
 from dedup_core import (  # noqa: E402
     Hasher as DupHasher,
     apply_action as dedup_apply_action,
@@ -48,6 +47,14 @@ from dedup_core import (  # noqa: E402
     undo_from_report as dedup_undo_from_report,
     write_report as dedup_write_report,
     DEFAULT_REPORT_NAME as DEDUP_REPORT_NAME,
+)
+# media-quality-checker (tools/03-quality) — quality_core paketi
+from quality_core import (  # noqa: E402
+    apply_action as quality_apply_action,
+    find_quality_issues,
+    undo_from_report as quality_undo_from_report,
+    write_report as quality_write_report,
+    DEFAULT_REPORT_NAME as QUALITY_REPORT_NAME,
 )
 
 # Step 00 için kullanılan medya uzantıları
@@ -99,7 +106,7 @@ PIPELINE_STEPS: list[tuple[int, str, str, bool]] = [
     (0, "Organize", "Dosya isimlerini düzenli numaralandır", True),
     (1, "Validate", "Format ve dosya bütünlüğü kontrolü", True),
     (2, "Duplicate", "Birebir + benzer kopya tespiti", True),
-    (3, "Quality", "Blur, brightness, contrast metrikleri", False),
+    (3, "Quality", "Blur, brightness, contrast, BPP metrikleri", True),
     (4, "Watermark", "YOLOv8 ile filigran tespit/temizleme", False),
     (5, "Resize", "Lanczos ile boyutlandırma", False),
     (6, "Caption", "Qwen3-VL multi-pass caption", False),
@@ -2052,6 +2059,419 @@ def build_duplicate_tab():
         undo_btn.on("click", lambda: _run_undo(dry_run=False))
 
 
+def build_quality_tab():
+    """03 — Quality: 4 metric (blur/brightness/contrast/bpp) + composite scan
+    + action (move/delete) + undo. Validator pattern'i form-only."""
+    with ui.column().classes("w-full max-w-screen-xl mx-auto p-6 gap-4"):
+        ui.label("03 — Quality").classes("text-2xl font-semibold")
+        ui.label(
+            "4 quality metric ile composite kontrol — blur (Laplacian), "
+            "brightness (mean px), contrast (stddev), BPP (bytes/pixel). "
+            "Düşük-quality dosyaları rapor / move / delete."
+        ).classes("text-sm text-slate-600")
+
+        with ui.grid(columns="1fr 1fr").classes("w-full gap-6 mt-2"):
+            # ----- Sol kolon: form -----
+            with ui.card().classes("w-full"):
+                ui.label("Configuration").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+
+                recursive_check = ui.checkbox("Recursive — alt klasörler", value=True)
+
+                # Hangi check'ler çalışsın
+                ui.label("Aktif kontroller").classes(
+                    "text-xs uppercase text-slate-500 tracking-wide mt-2"
+                )
+                with ui.row().classes("gap-3"):
+                    blur_check = ui.checkbox("Blur", value=True)
+                    bright_check = ui.checkbox("Brightness", value=True)
+                    contrast_check = ui.checkbox("Contrast", value=True)
+                    bpp_check = ui.checkbox("BPP", value=True)
+
+                action_select = ui.select(
+                    {
+                        "none": "Sadece raporla (default)",
+                        "move": "/rejected'a taşı (undoable)",
+                        "delete": "Sil (irreversible)",
+                    },
+                    label="Düşük-quality için aksiyon",
+                    value="none",
+                ).props("dense outlined").classes("w-full")
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    invalid_dir_input = ui.input(
+                        "Invalid dir",
+                        placeholder="move için zorunlu",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            invalid_dir_input, title="Rejected dizini seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                with ui.row().classes("gap-3 mt-1"):
+                    dryrun_check = ui.checkbox("Dry-run", value=True)
+                    yes_check = ui.checkbox("Onaysız (delete)", value=False)
+
+                # Threshold ayarları
+                with ui.expansion("Threshold ayarları (advanced)", icon="tune").classes(
+                    "w-full mt-2"
+                ):
+                    with ui.column().classes("w-full gap-2 p-2"):
+                        ui.label("Blur (Laplacian variance — düşük=bulanık)").classes(
+                            "text-xs text-slate-500"
+                        )
+                        blur_threshold = ui.number(
+                            "Min blur score", value=100, min=0, step=10,
+                        ).props("dense outlined")
+
+                        ui.label("Brightness (mean pixel 0-255)").classes(
+                            "text-xs text-slate-500 mt-2"
+                        )
+                        with ui.grid(columns="1fr 1fr").classes("w-full gap-3"):
+                            min_brightness = ui.number(
+                                "Min", value=30, min=0, max=255, step=5,
+                            ).props("dense outlined")
+                            max_brightness = ui.number(
+                                "Max", value=225, min=0, max=255, step=5,
+                            ).props("dense outlined")
+
+                        ui.label("Contrast (stddev — düşük=düz)").classes(
+                            "text-xs text-slate-500 mt-2"
+                        )
+                        contrast_threshold = ui.number(
+                            "Min contrast", value=15, min=0, step=1,
+                        ).props("dense outlined")
+
+                        ui.label("BPP (bytes/pixel — düşük=aşırı sıkıştırma)").classes(
+                            "text-xs text-slate-500 mt-2"
+                        )
+                        min_bpp = ui.number(
+                            "Min BPP", value=0.1, min=0, step=0.05, format="%.3f",
+                        ).props("dense outlined")
+
+                with ui.row().classes("gap-2 mt-3 w-full items-center"):
+                    run_btn = ui.button("Run quality check").props(
+                        "color=primary no-caps"
+                    )
+                    progress_label = ui.label("").classes("text-xs text-slate-600")
+                progress_bar = ui.linear_progress(
+                    value=0, show_value=False
+                ).classes("w-full")
+                progress_bar.visible = False
+
+                ui.separator().classes("my-3")
+                ui.label("Undo").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                undo_input = ui.input(
+                    "quality_report.json yolu",
+                    placeholder="(move action sonrası otomatik dolar)",
+                ).props("dense outlined").classes("w-full")
+                with ui.row().classes("gap-2"):
+                    undo_preview_btn = ui.button("Preview Undo").props(
+                        "outline color=primary no-caps"
+                    )
+                    undo_btn = ui.button("Undo").props(
+                        "outline color=grey-7 no-caps"
+                    )
+
+            # ----- Sağ kolon: results -----
+            with ui.card().classes("w-full"):
+                ui.label("Sonuç").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                summary_label = ui.label(
+                    "Henüz quality check çalıştırılmadı."
+                ).classes("text-sm text-slate-600 italic mt-1")
+
+                with ui.row().classes("w-full justify-around mt-2"):
+                    with ui.column().classes("items-center gap-0"):
+                        total_card = ui.label("—").classes(
+                            "text-3xl font-bold text-slate-700"
+                        )
+                        ui.label("Total").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        valid_card = ui.label("—").classes(
+                            "text-3xl font-bold text-green-600"
+                        )
+                        ui.label("Valid").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        invalid_card = ui.label("—").classes(
+                            "text-3xl font-bold text-red-600"
+                        )
+                        ui.label("Invalid").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+
+                ui.separator().classes("my-2")
+                ui.label("Reason kırılımı").classes(
+                    "text-xs uppercase text-slate-500 tracking-wide"
+                )
+                reasons_panel = ui.column().classes("w-full gap-1 mt-1")
+
+                ui.separator().classes("my-2")
+                invalid_table = ui.table(
+                    columns=[
+                        {"name": "filename", "label": "Dosya", "field": "filename", "align": "left", "sortable": True},
+                        {"name": "reason", "label": "Sebep", "field": "reason", "align": "left", "sortable": True},
+                        {"name": "blur", "label": "Blur", "field": "blur", "align": "right", "sortable": True},
+                        {"name": "bright", "label": "Bright", "field": "bright", "align": "right", "sortable": True},
+                        {"name": "contrast", "label": "Contrast", "field": "contrast", "align": "right", "sortable": True},
+                        {"name": "bpp", "label": "BPP", "field": "bpp", "align": "right", "sortable": True},
+                    ],
+                    rows=[],
+                    pagination=10,
+                ).classes("w-full mt-1")
+
+        # ------ Action handlers ------
+
+        def _build_config() -> dict:
+            return {
+                "quality": {
+                    "blur_threshold": float(blur_threshold.value or 100),
+                    "brightness": {
+                        "min": float(min_brightness.value or 30),
+                        "max": float(max_brightness.value or 225),
+                    },
+                    "contrast_threshold": float(contrast_threshold.value or 15),
+                    "bpp": {"min": float(min_bpp.value or 0.1)},
+                },
+            }
+
+        def _enabled_checks() -> list[str]:
+            checks = []
+            if blur_check.value:
+                checks.append("blur")
+            if bright_check.value:
+                checks.append("brightness")
+            if contrast_check.value:
+                checks.append("contrast")
+            if bpp_check.value:
+                checks.append("bpp")
+            return checks or ["all"]
+
+        def _validate_inputs() -> Optional[str]:
+            if not STATE.is_valid_dataset():
+                return "Dataset yolu geçerli değil (header'da doğrula)"
+            if action_select.value == "move" and not invalid_dir_input.value:
+                return "Move için Invalid dir gerekli"
+            if not _enabled_checks():
+                return "En az bir check seçili olmalı"
+            return None
+
+        def _on_action_change(value: str):
+            if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
+                invalid_dir_input.value = str(Path(STATE.dataset_path) / "quality_rejected")
+                invalid_dir_input.update()
+        action_select.on_value_change(lambda e: _on_action_change(e.value))
+
+        def _fmt(v):
+            if v is None:
+                return "—"
+            try:
+                return f"{float(v):.2f}"
+            except (TypeError, ValueError):
+                return str(v)
+
+        def _populate_results(sr, action_msg: str = ""):
+            total_card.set_text(str(sr.total_scanned))
+            valid_card.set_text(str(sr.valid_count))
+            invalid_card.set_text(str(sr.invalid_count))
+
+            reasons_panel.clear()
+            with reasons_panel:
+                if not sr.reasons:
+                    ui.label("(düşük-quality bulunamadı)").classes(
+                        "text-xs text-slate-500 italic"
+                    )
+                else:
+                    total_inv = max(sr.invalid_count, 1)
+                    for reason, count in sorted(sr.reasons.items(), key=lambda x: -x[1]):
+                        pct = count / total_inv * 100
+                        with ui.row().classes("w-full items-center gap-2"):
+                            ui.label(reason).classes(
+                                "text-xs font-mono text-slate-700 w-44 truncate"
+                            )
+                            ui.linear_progress(value=pct / 100, show_value=False).classes(
+                                "flex-grow"
+                            )
+                            ui.label(f"{count} ({pct:.0f}%)").classes(
+                                "text-xs text-slate-600 w-16 text-right"
+                            )
+
+            invalid_table.rows = [
+                {
+                    "filename": r.get("filename", ""),
+                    "reason": r.get("reason", ""),
+                    "blur": _fmt(r.get("blur_score")),
+                    "bright": _fmt(r.get("brightness_score")),
+                    "contrast": _fmt(r.get("contrast_score")),
+                    "bpp": _fmt(r.get("bpp_score")),
+                }
+                for r in sr.results if not r.get("valid")
+            ]
+            invalid_table.update()
+
+            verb = "Quality check tamam"
+            summary_label.set_text(
+                f"{verb}: {sr.valid_count}/{sr.total_scanned} valid"
+                + (f"\n{action_msg}" if action_msg else "")
+            )
+
+        async def on_run():
+            err = _validate_inputs()
+            if err:
+                ui.notify(err, type="negative")
+                return
+
+            run_btn.disable()
+            progress_bar.visible = True
+            progress_bar.set_value(0)
+            progress_label.set_text("Tarama…")
+
+            try:
+                config = _build_config()
+                checks = _enabled_checks()
+
+                # NiceGUI loop'a soluk verecek progress callback
+                last_update = [0]
+                def _cb(current: int, total: int, msg: str):
+                    if total > 0:
+                        progress_bar.set_value(current / total)
+                    progress_label.set_text(msg)
+
+                await asyncio.sleep(0)
+                # find_quality_issues blocking — UI thread'i bloklar; chunk halinde
+                # işlemek için scanner'ın progress_cb'si var ama callback senkron
+                # blocking yine de. Lite dataset'te OK, büyük için ileride
+                # asyncio.to_thread() ile sarmalanabilir.
+                sr = find_quality_issues(
+                    STATE.dataset_path,
+                    config=config,
+                    checks=checks,
+                    recursive=recursive_check.value,
+                    progress_cb=_cb,
+                )
+
+                if sr.total_scanned == 0:
+                    ui.notify("Hiç dosya bulunamadı", type="warning")
+                    return
+
+                action = action_select.value
+                if action == "delete" and not dryrun_check.value and not yes_check.value:
+                    _confirm_delete_dialog(
+                        sr.invalid_count,
+                        on_confirm=lambda: _execute_action(sr, action),
+                    )
+                    return
+                _execute_action(sr, action)
+
+            except Exception as e:
+                ui.notify(f"Quality check hatası: {e}", type="negative")
+            finally:
+                progress_bar.visible = False
+                progress_label.set_text("")
+                run_btn.enable()
+
+        def _confirm_delete_dialog(count: int, *, on_confirm):
+            with ui.dialog() as dlg, ui.card().classes("w-[500px]"):
+                ui.label("⚠ Kalıcı silme onayı").classes("text-lg font-semibold")
+                ui.label(
+                    f"{count} düşük-quality dosya KALICI olarak silinecek. "
+                    "Geri alınamaz. Önce 'Move' ile dene."
+                ).classes("text-sm text-slate-700")
+                with ui.row().classes("w-full justify-end gap-2 mt-3"):
+                    ui.button("Cancel", on_click=dlg.close).props(
+                        "flat color=grey no-caps"
+                    )
+
+                    def _confirm():
+                        dlg.close()
+                        on_confirm()
+
+                    ui.button("Sil", on_click=_confirm).props(
+                        "color=negative no-caps"
+                    )
+            dlg.open()
+
+        def _execute_action(sr, action: str):
+            try:
+                ar = quality_apply_action(
+                    sr.results,
+                    source_root=STATE.dataset_path,
+                    action=action,
+                    invalid_dir=invalid_dir_input.value or None,
+                    dry_run=dryrun_check.value,
+                )
+                if action == "move" and invalid_dir_input.value:
+                    report_path = Path(invalid_dir_input.value) / QUALITY_REPORT_NAME
+                else:
+                    report_path = Path(STATE.dataset_path) / QUALITY_REPORT_NAME
+
+                quality_write_report(
+                    report_path,
+                    scan_result=sr,
+                    action_result=ar,
+                    recursive=recursive_check.value,
+                    config={
+                        "checks": _enabled_checks(),
+                        "thresholds": _build_config()["quality"],
+                    },
+                )
+                undo_input.set_value(str(report_path))
+                STATE.last_report_paths[3] = str(report_path)
+
+                dryrun_tag = " (DRY-RUN)" if dryrun_check.value else ""
+                if action == "move":
+                    msg = f"Taşınan: {len(ar.entries)}{dryrun_tag} → {ar.invalid_dir}"
+                elif action == "delete":
+                    msg = f"Silinen: {len(ar.entries)}{dryrun_tag}"
+                else:
+                    msg = f"Sadece raporlandı: {sr.invalid_count} düşük-quality"
+
+                _populate_results(sr, action_msg=f"{msg}\nRapor: {report_path}")
+                ui.notify(msg, type="positive" if not dryrun_check.value else "info")
+                STATE.notify_change()
+            except Exception as e:
+                ui.notify(f"Aksiyon hatası: {e}", type="negative")
+
+        run_btn.on("click", on_run)
+
+        def _run_undo(dry_run: bool):
+            report = undo_input.value or STATE.last_report_paths.get(3)
+            if not report:
+                ui.notify("Undo için rapor yolu girin", type="negative")
+                return
+            if not Path(report).exists():
+                ui.notify(f"Rapor yok: {report}", type="negative")
+                return
+            try:
+                summary = quality_undo_from_report(report, dry_run=dry_run)
+                label = "Undo preview" if dry_run else "Undo"
+                msg = (
+                    f"{label}: restored={summary['restored']}, "
+                    f"skipped={summary['skipped']}"
+                )
+                if summary["irreversible_deletes"]:
+                    msg += f", irreversible_deletes={summary['irreversible_deletes']}"
+                ui.notify(msg, type="info" if dry_run else "positive")
+                summary_label.set_text(msg)
+                if not dry_run:
+                    STATE.notify_change()
+            except Exception as e:
+                ui.notify(f"Undo hatası: {e}", type="negative")
+
+        undo_preview_btn.on("click", lambda: _run_undo(dry_run=True))
+        undo_btn.on("click", lambda: _run_undo(dry_run=False))
+
+
 def build_stub_tab(idx: int, name: str, desc: str):
     with ui.column().classes(
         "w-full max-w-screen-md mx-auto p-12 gap-3 items-center justify-center min-h-96"
@@ -2106,6 +2526,7 @@ def main_page(tab: str = "overview"):
         0: build_organize_tab,
         1: build_validate_tab,
         2: build_duplicate_tab,
+        3: build_quality_tab,
     }
 
     with ui.tab_panels(tabs, value=initial).classes("w-full"):
