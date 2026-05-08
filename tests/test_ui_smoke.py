@@ -24,14 +24,18 @@ def test_ui_module_imports():
 
 
 def test_pipeline_steps_definition_complete():
-    """8 step tanımlı, her biri (idx, name, desc) tuple."""
+    """8 step tanımlı, her biri (idx, name, desc, wired) tuple."""
     import ui
     assert len(ui.PIPELINE_STEPS) == 8
     indices = [s[0] for s in ui.PIPELINE_STEPS]
     assert indices == list(range(8))
-    for idx, name, desc in ui.PIPELINE_STEPS:
+    for idx, name, desc, wired in ui.PIPELINE_STEPS:
         assert isinstance(name, str) and name
         assert isinstance(desc, str) and desc
+        assert isinstance(wired, bool)
+    # v0.1: yalnız step 00 wired
+    wired_indices = [s[0] for s in ui.PIPELINE_STEPS if s[3]]
+    assert wired_indices == [0]
 
 
 def test_scan_dataset_stats_handles_empty_dir(tmp_path):
