@@ -1,11 +1,11 @@
 #!/bin/bash
-# dataset-prep/scripts/install-tools.sh
+# media-dataset-prep/scripts/install-tools.sh
 # Pipeline tool'larını tools/ altına yerleştirir
 #
 # Kullanım:
 #   ./scripts/install-tools.sh           # default: github (clone)
 #   ./scripts/install-tools.sh github    # GitHub'dan clone
-#   ./scripts/install-tools.sh local     # Yerel ai-visual-lab/dataset-prep/'tan symlink
+#   ./scripts/install-tools.sh local     # Yerel ai-visual-lab/media-dataset-prep/'tan symlink
 #   ./scripts/install-tools.sh hybrid    # Önce GitHub dene, yoksa yerel symlink
 
 set -euo pipefail
@@ -46,7 +46,7 @@ declare -A GITHUB_URLS=(
 )
 
 echo "==============================================="
-echo "  dataset-prep — Tool Installation"
+echo "  media-dataset-prep — Tool Installation"
 echo "  Mode: $MODE"
 echo "==============================================="
 echo ""

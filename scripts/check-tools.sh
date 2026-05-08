@@ -1,5 +1,5 @@
 #!/bin/bash
-# dataset-prep/scripts/check-tools.sh
+# media-dataset-prep/scripts/check-tools.sh
 # Pipeline tool'larının durumunu kontrol eder
 
 set -euo pipefail
@@ -9,7 +9,7 @@ META_DIR="$(dirname "$SCRIPT_DIR")"
 TOOLS_DIR="$META_DIR/tools"
 
 echo "==============================================="
-echo "  dataset-prep — Tool Health Check"
+echo "  media-dataset-prep — Tool Health Check"
 echo "==============================================="
 echo ""
 

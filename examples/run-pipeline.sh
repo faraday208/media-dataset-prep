@@ -1,5 +1,5 @@
 #!/bin/bash
-# dataset-prep/examples/run-pipeline.sh
+# media-dataset-prep/examples/run-pipeline.sh
 # End-to-end pipeline örneği (sample-dataset/ üzerinde)
 #
 # Bu script tool'ları manuel çalıştırma örneği. İnteraktif review için Gradio UI kullanın.
@@ -15,7 +15,7 @@ OUTPUT_DIR="$SCRIPT_DIR/output"
 mkdir -p "$OUTPUT_DIR"
 
 echo "==============================================="
-echo "  dataset-prep — Pipeline Örneği"
+echo "  media-dataset-prep — Pipeline Örneği"
 echo "==============================================="
 echo ""
 echo "Giriş : $SAMPLE_DIR"

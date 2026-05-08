@@ -1,6 +1,6 @@
 # Documentation
 
-dataset-prep meta repo dokümantasyonu.
+media-dataset-prep meta repo dokümantasyonu.
 
 ## İçerik
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# dataset-prep/scripts/update-tools.sh
+# media-dataset-prep/scripts/update-tools.sh
 # tools/'taki tüm clone'lanmış repos'ları günceller (git pull)
 
 set -euo pipefail

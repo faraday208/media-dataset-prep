@@ -1,4 +1,4 @@
-# dataset-prep
+# media-dataset-prep
 
 > Meta-orchestrator for AI image dataset preparation pipeline.
 > Ham görselleri AI eğitimi için hazır hale getiren modüler araç ekosistemi.
@@ -11,7 +11,7 @@
 
 ## 🎯 Bu Repo Nedir?
 
-**dataset-prep**, AI görsel modelleri (LoRA, fine-tune, vb.) için dataset hazırlama sürecini yöneten **meta-orkestratör** repo'dur. Kendisi kod barındırmaz — pipeline'ın **7 bağımsız tool**'unu tek bir akışta birleştirir.
+**media-dataset-prep**, AI görsel modelleri (LoRA, fine-tune, vb.) için dataset hazırlama sürecini yöneten **meta-orkestratör** repo'dur. Kendisi kod barındırmaz — pipeline'ın **7 bağımsız tool**'unu tek bir akışta birleştirir.
 
 Her tool ayrı GitHub repo'sunda yaşar. Bu repo:
 
@@ -70,8 +70,8 @@ Eğitime hazır dataset
 
 ### 1. Clone et
 ```bash
-git clone https://github.com/faraday208/dataset-prep
-cd dataset-prep
+git clone https://github.com/faraday208/media-dataset-prep
+cd media-dataset-prep
 ```
 
 ### 2. uv kur (yoksa)
@@ -127,7 +127,7 @@ make check                 # Tool'ların API health check
 ## 📁 Repo Yapısı
 
 ```
-dataset-prep/
+media-dataset-prep/
 ├── README.md
 ├── LICENSE
 ├── pyproject.toml         # uv workspace tanımı
@@ -162,7 +162,7 @@ git clone https://github.com/faraday208/image-captioner
 cd image-captioner
 uv sync
 # Bu repo'nun pyproject.toml'una göre kendi venv'ini kurar
-# dataset-prep'e ihtiyaç yok
+# media-dataset-prep'e ihtiyaç yok
 ```
 
 Her tool tam belgelenmiştir, kendi başına çalışır.
@@ -190,7 +190,7 @@ Her tool tam belgelenmiştir, kendi başına çalışır.
 ### Senaryo 3: Tek tool ihtiyacı
 1. `git clone github.com/faraday208/duplicate-image-finder`
 2. `cd duplicate-image-finder && uv sync`
-3. Çalıştır — dataset-prep meta'ya gerek yok
+3. Çalıştır — media-dataset-prep meta'ya gerek yok
 
 ---
 
