@@ -1176,12 +1176,17 @@ def _path_to_url(path: str) -> str:
 
 
 def _bpp_label(width: int, height: int, size_bytes: int) -> tuple[str, str] | None:
-    """BPP (bytes per pixel) etiketi + Tailwind renk class.
+    """BPP (bytes per pixel) etiketi + Tailwind renk class — AI training context.
 
-    BPP eşikleri (core/actions.py BEST stratejisiyle aynı):
-    - < 0.05  → red    (DİSKALİFİYE — artifact dolu)
-    - < 0.15  → yellow (orantılı ceza — düşük quality)
-    - ≥ 0.15  → green  (tam puan — normal/yüksek quality)
+    Eşikler **AI/VAE encoder** için (göz değil): JPG q40-60 (0.05-0.5 aralığı)
+    gözle temiz ama block-artifact'leri model'e training noise olarak gözükür.
+
+    - < 0.05 → red    (DİSKALİFİYE — yıkıcı, q<10)
+    - < 0.5  → yellow (suboptimal — JPG q70 altı, AI için ideal değil)
+    - ≥ 0.5  → green  (AI training-ready — JPG q90+ / WebP q90+ / PNG)
+
+    Eşikler core/actions.py BEST stratejisiyle aynı (DISQUALIFY_BPP=0.05,
+    FULL_SCORE_BPP=0.5).
     """
     if not (width and height) or size_bytes <= 0:
         return None
@@ -1189,7 +1194,7 @@ def _bpp_label(width: int, height: int, size_bytes: int) -> tuple[str, str] | No
     if bpp < 0.05:
         color = "text-red-600"
         suffix = " ⚠"
-    elif bpp < 0.15:
+    elif bpp < 0.5:
         color = "text-yellow-600"
         suffix = ""
     else:
@@ -1508,8 +1513,9 @@ def build_duplicate_tab():
                                 ui.label(bpp_text).classes(
                                     f"text-xs font-mono {bpp_color}"
                                 ).tooltip(
-                                    "Bytes per pixel — yüksek = daha kaliteli "
-                                    "(< 0.05 artifact, ≥ 0.15 normal+)"
+                                    "Bytes per pixel — AI training quality\n"
+                                    "< 0.05: yıkıcı (DQ), < 0.5: suboptimal\n"
+                                    "≥ 0.5: training-ready (JPG q90+/PNG)"
                                 )
                             keep_btn_label = "✓ Korunan" if is_keeper else "Bunu tut"
                             keep_btn_color = "color=positive" if is_keeper else "color=grey-7"
@@ -1650,10 +1656,10 @@ def build_duplicate_tab():
                                 )
                             )
                             bpp_label_widget.tooltip(
-                                "Bytes per pixel — yüksek = daha kaliteli\n"
-                                "< 0.05: artifact dolu (DQ)\n"
-                                "0.05-0.15: düşük quality\n"
-                                "≥ 0.15: normal/yüksek"
+                                "Bytes per pixel — AI training quality\n"
+                                "< 0.05: yıkıcı (DQ — q<10 artifact)\n"
+                                "0.05-0.5: suboptimal (JPG q70 altı, training noise)\n"
+                                "≥ 0.5: training-ready (JPG q90+, WebP q90+, PNG)"
                             )
                         else:
                             bpp_label_widget.set_text("")

@@ -13,7 +13,7 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 |---|---|---|---|---|---|
 | 00 | media-organizer | **v0.5.1** ✓ | ✓ | **wired** ✓ | CLI parity %100; recursive flat/tree, undo + cleanup |
 | 01 | media-validator | **v0.3.0** ✓ | ✓ | stub | paket adı (image→media), v0.2.1 bug fix dahil, 43 unit test |
-| 02 | media-deduplicator | **v1.1.0** ✓ | ✓ | wired ✓ | exact+similar mode, BPP-aware best stratejisi, gallery + pair-wise review, 57 test |
+| 02 | media-deduplicator | **v1.2.0** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri (FULL_SCORE=0.5), gallery + lightbox + zoom + carousel, 65 test |
 | 03 | image-quality-checker | — | ? | stub | blur/brightness/contrast metrikleri; **gallery filter** |
 | 04 | watermark-detection | — | ? | stub | YOLOv8; tool'un kendi Gradio UI'ı var (port 8300) |
 | 05 | image-resizer | — | ? | stub | Lanczos batch; review değeri düşük |
@@ -74,9 +74,9 @@ B veya C mantıklı; A polyrepo prensibine ters.
 - [x] **Tool conventions doc** (`docs/tool-conventions.md`) — pattern formalizasyonu
 - [x] **01 validate** tool refactor (action layer, undo, threshold flag'ler, 43 test)
 - [x] **01 validate** UI wire-up (form-only + progress + subdir + auto-suggest)
-- [x] **02 duplicate** clean refactor — `media-deduplicator` v1.0.0 (41 test)
-- [ ] **02 duplicate** UI wire-up (gallery + pair-wise review)
-- [ ] **NiceGUI image gallery** reusable widget (02 + 03 + 06 ortak)
+- [x] **02 duplicate** clean refactor — `media-deduplicator` v1.2.0 (65 test, AI BPP eşikleri)
+- [x] **02 duplicate** UI wire-up — gallery + lightbox (carousel + zoom + BPP göstergesi)
+- [x] **NiceGUI image gallery** reusable pattern (02'de kuruldu, 03/06'da yeniden kullanılacak)
 - [ ] **State persistence** (JSON sidecar): UI session bilgisi diske yazılsın
 - [ ] **06 caption** wire-up (görsel + caption editor)
 
@@ -102,5 +102,6 @@ Mevcut tag'ler:
 - `media-validator/v0.3.0` — paket adı `image-validator` → `media-validator`
 - `media-validator/v0.2.1` — kritik bug fix: path-based dosya çözümleme
 - `media-validator/v0.2.0` — action layer (move/delete) + undo + threshold flags
+- `media-deduplicator/v1.2.0` — AI training BPP eşikleri (FULL_SCORE 0.15→0.5); 65 test
 - `media-deduplicator/v1.1.0` — keep_strategy='best' BPP-aware (artifact diskalifiye + composite skor); 57 test
 - `media-deduplicator/v1.0.0` — clean release: tek run.py, exact+similar mode, action layer, undo, 41 test (eski `duplicate-image-finder` paketinin yerine)
