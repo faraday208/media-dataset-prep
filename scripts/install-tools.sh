@@ -30,7 +30,7 @@ declare -A LOCAL_PATHS=(
   ["03-quality"]="$LOCAL_BASE/image-quality-checker"
   ["04-watermark"]="$LOCAL_BASE/watermark-detection"
   ["05-resize"]="$LOCAL_BASE/image-resizer"
-  ["06-caption"]="$LOCAL_BASE/image-captioner"
+  ["06-caption"]="$LOCAL_BASE/media-captioner"
   ["07-golden-set"]="$LOCAL_BASE/golden-set-generator"
 )
 
@@ -41,7 +41,7 @@ declare -A GITHUB_URLS=(
   ["03-quality"]="https://github.com/faraday208/image-quality-checker.git"
   ["04-watermark"]="https://github.com/faraday208/watermark-detection.git"
   ["05-resize"]="https://github.com/faraday208/image-resizer.git"
-  ["06-caption"]="https://github.com/faraday208/image-captioner.git"
+  ["06-caption"]="https://github.com/faraday208/media-captioner.git"
   ["07-golden-set"]="https://github.com/faraday208/golden-set-generator.git"
 )
 

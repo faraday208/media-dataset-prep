@@ -55,7 +55,7 @@ echo "Adım 5/7: image-resizer"
 echo "  cd $TOOLS_DIR/05-resize && python image_resizer.py ..."
 echo ""
 
-echo "Adım 6/7: image-captioner"
+echo "Adım 6/7: media-captioner"
 echo "  cd $TOOLS_DIR/06-caption && python client/batch_client.py ..."
 echo ""
 

@@ -60,8 +60,8 @@ YOLOv8 ile filigran tespit ve temizleme; manuel review + annotation Gradio UI ü
 
 ---
 
-### 05 — image-resizer
-**GitHub:** https://github.com/faraday208/image-resizer
+### 05 — media-resizer
+**GitHub:** https://github.com/faraday208/media-resizer
 **Tip:** CLI (tek script)
 
 Pillow + Lanczos algoritması ile yüksek kaliteli boyutlandırma; aspect ratio korunur.
@@ -70,8 +70,8 @@ Pillow + Lanczos algoritması ile yüksek kaliteli boyutlandırma; aspect ratio 
 
 ---
 
-### 06 — image-captioner
-**GitHub:** https://github.com/faraday208/image-captioner
+### 06 — media-captioner
+**GitHub:** https://github.com/faraday208/media-captioner
 **Tip:** Client + Server (Ollama veya remote)
 
 Qwen3-VL-30B ile multi-pass captioning (5-pass: saç/yüz, vücut/poz, kıyafet, sahne/teknik, doğal dil caption — 3 uzunlukta: short/medium/long). LoRA / fine-tune training için. JSON structured + caption tutarlılığı.

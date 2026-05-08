@@ -6,7 +6,7 @@
 ```
 ai-image-toolkit/
 ├── duplicate-finder/
-├── image-captioner/
+├── media-captioner/
 ├── ...
 ```
 **Sorun:** Sadece 1 tool lazım olan kişi 28 GB clone yapar. Topluluk fork'lamaktan kaçınır.
@@ -14,7 +14,7 @@ ai-image-toolkit/
 ### Saf Polyrepo (reddedildi)
 ```
 github.com/user/duplicate-finder
-github.com/user/image-captioner
+github.com/user/media-captioner
 ... (10+ ayrı repo)
 ```
 **Sorun:** Pipeline bütünlüğü kaybolur. Yeni gelen "bu tool'lar nasıl bir araya geliyor?" sorusunu cevaplayamaz.

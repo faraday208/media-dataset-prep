@@ -53,14 +53,14 @@ Pipeline 7 ardışık aşamadan oluşur. Her aşama bağımsız çalışabilir, 
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [05] image-resizer                                          │
+│  [05] media-resizer                                          │
 │  - Lanczos algoritmasıyla kaliteli boyutlandırma             │
 │  - Aspect ratio koruma                                       │
 │  - Hedef çözünürlük (örn. 1024x1024 LoRA için)              │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [06] image-captioner                                        │
+│  [06] media-captioner                                        │
 │  - Qwen3-VL-30B ile multi-pass caption                       │
 │  - Pass 1: Saç + yüz ifadesi                                 │
 │  - Pass 2: Vücut + poz                                       │

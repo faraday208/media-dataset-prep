@@ -18,8 +18,8 @@ dependencies = [
     "media-deduplicator",
     "media-quality-checker",
     "media-watermark-detector",
-    "image-resizer",
-    "image-captioner",
+    "media-resizer",
+    "media-captioner",
     "golden-set-generator",
 ]
 
@@ -60,6 +60,6 @@ media-validator = { workspace = true }
 media-deduplicator = { workspace = true }
 media-quality-checker = { workspace = true }
 media-watermark-detector = { workspace = true }
-image-resizer = { workspace = true }
-image-captioner = { workspace = true }
+media-resizer = { workspace = true }
+media-captioner = { workspace = true }
 golden-set-generator = { workspace = true }
