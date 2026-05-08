@@ -15,7 +15,7 @@ authors = [
 dependencies = [
     "media-organizer",
     "media-validator",
-    "duplicate-image-finder",
+    "media-deduplicator",
     "image-quality-checker",
     "watermark-detection",
     "image-resizer",
@@ -55,7 +55,7 @@ members = [
 [tool.uv.sources]
 media-organizer = { workspace = true }
 media-validator = { workspace = true }
-duplicate-image-finder = { workspace = true }
+media-deduplicator = { workspace = true }
 image-quality-checker = { workspace = true }
 watermark-detection = { workspace = true }
 image-resizer = { workspace = true }
