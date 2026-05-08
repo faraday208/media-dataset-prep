@@ -173,7 +173,7 @@ def test_step02_dry_run_writes_report_no_filesystem_change(tmp_path):
 
 
 def test_step02_output_consumable_as_quality_input(tmp_path):
-    """02 sonrası output 03 image-quality-checker'ın girdisi olur:
+    """02 sonrası output 03 media-quality-checker'ın girdisi olur:
     temizlenmiş, unique görsel seti."""
     dataset = tmp_path / "ds"
     _make_dataset_with_duplicates(dataset)

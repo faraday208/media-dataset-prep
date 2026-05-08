@@ -16,7 +16,7 @@ dependencies = [
     "media-organizer",
     "media-validator",
     "media-deduplicator",
-    "image-quality-checker",
+    "media-quality-checker",
     "watermark-detection",
     "image-resizer",
     "image-captioner",
@@ -25,6 +25,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "numpy>=2.4.4",
+    "opencv-python>=4.13.0.92",
     "pytest>=8.0",
 ]
 ui = [
@@ -56,7 +58,7 @@ members = [
 media-organizer = { workspace = true }
 media-validator = { workspace = true }
 media-deduplicator = { workspace = true }
-image-quality-checker = { workspace = true }
+media-quality-checker = { workspace = true }
 watermark-detection = { workspace = true }
 image-resizer = { workspace = true }
 image-captioner = { workspace = true }
