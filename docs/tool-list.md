@@ -49,8 +49,8 @@ Görsel kalite metrikleri (blur, brightness, contrast, BPP, EXIF). 4-pass JSON s
 
 ---
 
-### 04 — watermark-detection
-**GitHub:** https://github.com/faraday208/watermark-detection
+### 04 — media-watermark-detector
+**GitHub:** https://github.com/faraday208/media-watermark-detector
 **Tip:** CLI + Gradio UI + YOLOv8 model
 **Port:** 8300 (UI için)
 
