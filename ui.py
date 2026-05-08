@@ -1175,6 +1175,37 @@ def _path_to_url(path: str) -> str:
     return f"/fs{p}"
 
 
+def _aspect_label(width: int, height: int) -> str:
+    """Aspect ratio etiketi — yaygın oranlara match (16:9, 4:3, 3:4, 1:1...)
+    veya decimal fallback (örn. 1.42).
+
+    Aynı grupta farklı aspect'ler varsa kullanıcı görsel olarak crop/pad/
+    upscale şüphesi yapabilir."""
+    if not (width and height):
+        return ""
+    ratio = width / height
+    presets = [
+        ((16, 9), "16:9"),
+        ((9, 16), "9:16"),
+        ((4, 3), "4:3"),
+        ((3, 4), "3:4"),
+        ((3, 2), "3:2"),
+        ((2, 3), "2:3"),
+        ((1, 1), "1:1"),
+        ((5, 4), "5:4"),
+        ((4, 5), "4:5"),
+        ((21, 9), "21:9"),
+        ((9, 21), "9:21"),
+        ((2, 1), "2:1"),
+        ((1, 2), "1:2"),
+    ]
+    for (a, b), label in presets:
+        target = a / b
+        if abs(ratio - target) / target < 0.02:  # %2 tolerans
+            return label
+    return f"{ratio:.2f}:1"
+
+
 def _bpp_label(width: int, height: int, size_bytes: int) -> tuple[str, str] | None:
     """BPP (bytes per pixel) etiketi + Tailwind renk class — AI training context.
 
@@ -1501,12 +1532,14 @@ def build_duplicate_tab():
                                     on_click=lambda p=path: _open_lightbox(p),
                                 ).props("flat dense size=sm color=grey-7").tooltip("Aç")
 
-                            # Resolution + size + (similar mode'da distance)
+                            # Resolution + aspect + size + (similar mode'da distance)
                             sz = f.get("size_bytes", 0)
-                            info_parts = [dedup_humanize_bytes(sz)]
                             w, h = f.get("width", 0), f.get("height", 0)
+                            info_parts = []
                             if w and h:
-                                info_parts.insert(0, f"{w}×{h}")
+                                aspect = _aspect_label(w, h)
+                                info_parts.append(f"{w}×{h} ({aspect})")
+                            info_parts.append(dedup_humanize_bytes(sz))
                             if "distance" in f:
                                 info_parts.append(f"d={f['distance']}")
                             ui.label(" · ".join(info_parts)).classes(
@@ -1643,7 +1676,7 @@ def build_duplicate_tab():
                         title_label.set_text(Path(path).name)
                         info_parts = []
                         if w and h:
-                            info_parts.append(f"{w}×{h}")
+                            info_parts.append(f"{w}×{h} ({_aspect_label(w, h)})")
                         info_parts.append(dedup_humanize_bytes(sz))
                         if "distance" in f:
                             info_parts.append(f"d={f['distance']}")
