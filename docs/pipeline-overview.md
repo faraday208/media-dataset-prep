@@ -11,7 +11,7 @@ Pipeline 7 ardışık aşamadan oluşur. Her aşama bağımsız çalışabilir, 
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [00] media-organizer                                        │
+│  [00] media-renamer                                          │
 │  Dağınık isimleri düzenli, sıralı numaralandır              │
 │  IMG_3847.jpg → MyDataset_001.jpg                           │
 │  - Tip-bazlı sequence (jpg/mp4/mp3 ayrı sayar)               │

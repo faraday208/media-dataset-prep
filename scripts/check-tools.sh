@@ -31,7 +31,7 @@ echo ""
 # Import edilebilirlik kontrolü
 echo "--- Python import kontrolü ---"
 declare -A MODULES=(
-  ["00-organize"]="rename_files"
+  ["00-rename"]="media_renamer"
   ["01-validate"]="src.validators.file_validator"
   ["02-duplicate"]="core"
   ["03-quality"]="src.checkers"

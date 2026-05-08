@@ -13,7 +13,7 @@ authors = [
 # uv sync ile her tool'un dependencies'i tek .venv altında kurulur.
 # Her tool tools/ altında symlink (development) veya clone (production) olarak yaşar.
 dependencies = [
-    "media-organizer",
+    "media-renamer",
     "image-validator",
     "duplicate-image-finder",
     "image-quality-checker",
@@ -28,7 +28,7 @@ package = false
 
 [tool.uv.workspace]
 members = [
-    "tools/00-organize",
+    "tools/00-rename",
     "tools/01-validate",
     "tools/02-duplicate",
     "tools/03-quality",
@@ -40,7 +40,7 @@ members = [
 
 # Workspace member'lara isim üzerinden bağlan
 [tool.uv.sources]
-media-organizer = { workspace = true }
+media-renamer = { workspace = true }
 image-validator = { workspace = true }
 duplicate-image-finder = { workspace = true }
 image-quality-checker = { workspace = true }
