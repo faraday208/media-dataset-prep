@@ -33,9 +33,9 @@ def test_pipeline_steps_definition_complete():
         assert isinstance(name, str) and name
         assert isinstance(desc, str) and desc
         assert isinstance(wired, bool)
-    # v0.1: yalnız step 00 wired
+    # 00 organize ve 01 validate wired (sıra: 02 duplicate)
     wired_indices = [s[0] for s in ui.PIPELINE_STEPS if s[3]]
-    assert wired_indices == [0]
+    assert wired_indices == [0, 1]
 
 
 def test_scan_dataset_stats_handles_empty_dir(tmp_path):
