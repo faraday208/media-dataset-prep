@@ -94,13 +94,13 @@ Yeni bir adım eklenirse iki numara arasına eklenir:
 - `02b-augment/` (02 ile 03 arası, augmentation eklenirse)
 
 ### 2. Sade isim
-`image-` prefix'i gereksiz tekrar. `dataset-prep` zaten görsel bağlamı verir.
+`image-` prefix'i gereksiz tekrar. `media-dataset-prep` zaten görsel bağlamı verir.
 
 ### 3. Pipeline dışı araçlar `_` prefix
 Pipeline aşaması olmayan yardımcılar (debug tool, geçici script, vb.) `_debug-tools/` gibi alt-çizgili klasörlere — alfabetik sıralamada başta toplanır, görsel olarak ayrı.
 
 ### 4. Bağımsızlık şart
-Her tool standalone clone'lanıp çalışabilmeli. Pipeline öncesi/sonrası adım bilgisi tool'un içinde değil, dataset-prep meta repo'nun rehberlerinde yaşar.
+Her tool standalone clone'lanıp çalışabilmeli. Pipeline öncesi/sonrası adım bilgisi tool'un içinde değil, media-dataset-prep meta repo'nun rehberlerinde yaşar.
 
 ## Skip / Hibrit Akış
 

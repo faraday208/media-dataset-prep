@@ -1,5 +1,5 @@
 [project]
-name = "dataset-prep"
+name = "media-dataset-prep"
 version = "0.1.0"
 description = "Meta-orchestrator for AI image dataset preparation pipeline"
 requires-python = ">=3.11"
