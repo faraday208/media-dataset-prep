@@ -6,7 +6,7 @@
 **Kapsam:** 8 tool (`media-dataset-prep` workspace member'ları). UI tarafı bu
 sözleşmelere güvenerek wire-up yapar.
 
-**Statü:** v1 — organizer (v0.5.0) ve image-validator (v0.2.0) bu pattern'i
+**Statü:** v1 — organizer (v0.5.1) ve image-validator (v0.2.1) bu pattern'i
 kuruyor. Diğer 6 tool sırayla uyumlandırılacak.
 
 ---
@@ -265,8 +265,9 @@ Mevcut tool'ların doc'tan sapmaları:
 | Tool | Sapma | Karar |
 |---|---|---|
 | organizer | `--recursive` iki modlu (`flat`/`tree`) | OK — tool-spesifik genişletme |
-| organizer | Rapor field'ları (`mode`, `total_files`, `renames`) farklı | v1.0'a kadar tolerans; v1.0'da §4'e uyum |
-| – | – | – |
+| organizer | Rapor field'ları (`mode`, `total_files`, `renames` vs `tool`, `actions`) | v1.0'a kadar tolerans; v1.0'da §4'e uyum |
+| organizer | argparse yerine manuel `sys.argv` parsing | v1.0 refactor'da argparse'a geçiş |
+| validator | `path` field'ı `FileValidationResult`'ta opt (back-compat) | Kalıcı — eski raporlar için fallback gerekli |
 
 Yeni sapma eklenmeden önce **bu doc'a not düşülür**.
 

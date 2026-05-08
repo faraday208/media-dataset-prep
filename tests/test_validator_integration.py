@@ -33,8 +33,12 @@ def test_validate_tool_pyproject_declares_expected_name():
     assert pyproj.exists()
     content = pyproj.read_text()
     assert 'name = "image-validator"' in content
-    # v0.2.0 (action layer) gerekli — eski rapor-only sürümle UI çalışmaz
-    assert 'version = "0.2.0"' in content
+    # v0.2.1+ gerekli (action layer + path-based dosya çözümleme bug fix)
+    import re
+    m = re.search(r'version = "(\d+)\.(\d+)\.(\d+)"', content)
+    assert m, "version field bulunamadı"
+    major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    assert (major, minor, patch) >= (0, 2, 1), f"v0.2.1+ gerekli, bulundu: {m.group(0)}"
 
 
 def test_validator_importable_via_workspace():
