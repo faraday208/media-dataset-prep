@@ -1374,10 +1374,16 @@ def build_duplicate_tab():
                     ui.label("Bulk:").classes("text-xs text-slate-500")
                     bulk_first_btn = ui.button("first").props(
                         "flat dense color=grey-7"
-                    ).tooltip("Tüm gruplarda ilk dosyayı keeper yap")
+                    ).tooltip("İlk dosya")
                     bulk_largest_btn = ui.button("largest").props(
                         "flat dense color=grey-7"
-                    ).tooltip("Tüm gruplarda en büyük dosyayı keeper yap")
+                    ).tooltip("En büyük byte")
+                    bulk_best_btn = ui.button("best").props(
+                        "flat dense color=primary"
+                    ).tooltip("BPP-aware: AI training quality")
+                    bulk_hires_btn = ui.button("hi-res").props(
+                        "flat dense color=grey-7"
+                    ).tooltip("En yüksek çözünürlük")
                 prev_btn.disable()
                 next_btn.disable()
 
@@ -1796,20 +1802,30 @@ def build_duplicate_tab():
         next_btn.on("click", _go_next)
 
         def _bulk_set_keeper(strategy: str):
+            """Tüm gruplara keep_strategy uygula. dedup_apply_action(action='none')
+            ile g.kept'leri set ettirip manual_keepers'a kopyalıyoruz —
+            tüm stratejiler (first/largest/smallest/highest_resolution/best)
+            için ortak yol."""
             sr = tab_state["scan_result"]
             if sr is None:
                 return
-            for i, g in enumerate(sr.groups):
-                if strategy == "first":
-                    tab_state["manual_keepers"][i] = g.files[0]["path"]
-                elif strategy == "largest":
-                    j = max(range(len(g.files)), key=lambda k: g.files[k].get("size_bytes", 0))
-                    tab_state["manual_keepers"][i] = g.files[j]["path"]
-            _refresh_gallery()
-            ui.notify(f"Bulk keeper={strategy} uygulandı ({len(sr.groups)} grup)", type="info")
+            try:
+                dedup_apply_action(sr, action="none", keep_strategy=strategy)
+                for i, g in enumerate(sr.groups):
+                    if g.kept:
+                        tab_state["manual_keepers"][i] = g.kept
+                _refresh_gallery()
+                ui.notify(
+                    f"Bulk keeper={strategy} uygulandı ({len(sr.groups)} grup)",
+                    type="info",
+                )
+            except Exception as e:
+                ui.notify(f"Bulk hatası: {e}", type="negative")
 
         bulk_first_btn.on("click", lambda: _bulk_set_keeper("first"))
         bulk_largest_btn.on("click", lambda: _bulk_set_keeper("largest"))
+        bulk_best_btn.on("click", lambda: _bulk_set_keeper("best"))
+        bulk_hires_btn.on("click", lambda: _bulk_set_keeper("highest_resolution"))
 
         async def on_scan():
             err = _validate_inputs()
@@ -1855,8 +1871,9 @@ def build_duplicate_tab():
                 tab_state["current_group_idx"] = 0
                 tab_state["manual_keepers"] = {}
 
-                # Initial keeper'ları keep_strategy'e göre set et (UI override)
-                _bulk_set_keeper(keep_strategy_select.value if keep_strategy_select.value in ("first", "largest") else "first")
+                # Initial keeper'ları seçili strategy ile set et
+                # (apply_action wrapping üzerinden tüm strategy'ler destekli)
+                _bulk_set_keeper(keep_strategy_select.value)
 
                 _refresh_stats()
                 _refresh_gallery()
