@@ -57,7 +57,7 @@ Eğitime hazır dataset
 | 01 | **media-validator** | [github](https://github.com/faraday208/media-validator) | Library + CLI |
 | 02 | **media-deduplicator** | [github](https://github.com/faraday208/media-deduplicator) | Library + CLI |
 | 03 | **media-quality-checker** | [github](https://github.com/faraday208/media-quality-checker) | Library + CLI |
-| 04 | **watermark-detection** | [github](https://github.com/faraday208/watermark-detection) | Library + CLI + YOLOv8 |
+| 04 | **media-watermark-detector** | [github](https://github.com/faraday208/media-watermark-detector) | Library + CLI + YOLOv8 |
 | 05 | **image-resizer** | [github](https://github.com/faraday208/image-resizer) | Library + CLI |
 | 06 | **image-captioner** | [github](https://github.com/faraday208/image-captioner) | Library + Ollama client |
 | 07 | **golden-set-generator** | [github](https://github.com/faraday208/golden-set-generator) | Library + CLI |

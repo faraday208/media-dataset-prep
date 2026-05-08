@@ -45,7 +45,7 @@ Pipeline 7 ardışık aşamadan oluşur. Her aşama bağımsız çalışabilir, 
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  [04] watermark-detection                                    │
+│  [04] media-watermark-detector                                    │
 │  - YOLOv8 ile filigran tespit                                │
 │  - Bounding box çıkarımı                                     │
 │  - Filigranlı görselleri ayrı klasöre / silme                │
