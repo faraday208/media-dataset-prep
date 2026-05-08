@@ -10,6 +10,7 @@ her adım kendi tool'unu in-process import eder ve sonuçları görselleştirir.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -750,10 +751,17 @@ def build_validate_tab():
                             value="jpg,jpeg,png,webp",
                         ).props("dense outlined").classes("w-full")
 
-                with ui.row().classes("gap-2 mt-3 w-full"):
+                with ui.row().classes("gap-2 mt-3 w-full items-center"):
                     run_btn = ui.button("Run validation").props(
                         "color=primary no-caps"
                     )
+                    progress_label = ui.label("").classes(
+                        "text-xs text-slate-600"
+                    )
+                progress_bar = ui.linear_progress(
+                    value=0, show_value=False
+                ).classes("w-full")
+                progress_bar.visible = False
 
                 ui.separator().classes("my-3")
                 ui.label("Undo").classes(
@@ -812,10 +820,11 @@ def build_validate_tab():
                 ui.separator().classes("my-2")
                 invalid_table = ui.table(
                     columns=[
-                        {"name": "filename", "label": "Dosya", "field": "filename", "align": "left"},
-                        {"name": "reason", "label": "Sebep", "field": "reason", "align": "left"},
+                        {"name": "filename", "label": "Dosya", "field": "filename", "align": "left", "sortable": True},
+                        {"name": "subdir", "label": "Subdir", "field": "subdir", "align": "left", "sortable": True},
+                        {"name": "reason", "label": "Sebep", "field": "reason", "align": "left", "sortable": True},
                         {"name": "dim", "label": "Boyut (WxH)", "field": "dim", "align": "left"},
-                        {"name": "size_kb", "label": "Size (KB)", "field": "size_kb", "align": "right"},
+                        {"name": "size_kb", "label": "Size (KB)", "field": "size_kb", "align": "right", "sortable": True},
                     ],
                     rows=[],
                     pagination=10,
@@ -851,6 +860,27 @@ def build_validate_tab():
                 return "Move aksiyonu için Invalid dir gerekli"
             return None
 
+        def _extract_subdir(abs_path: str) -> str:
+            """results[i].path → dataset'e göre relative subdir (recursive scan'de
+            aynı isimli dosyaları ayırt etmek için)."""
+            if not abs_path or not STATE.dataset_path:
+                return "—"
+            try:
+                rel = Path(abs_path).relative_to(Path(STATE.dataset_path).resolve())
+                parent = str(rel.parent)
+                return "—" if parent == "." else parent
+            except (ValueError, OSError):
+                return "—"
+
+        def _on_action_change(value: str):
+            """Move seçilince invalid_dir input'u <dataset>/rejected ile auto-doldur
+            (kullanıcı boş bıraktıysa)."""
+            if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
+                invalid_dir_input.value = str(Path(STATE.dataset_path) / "rejected")
+                invalid_dir_input.update()
+
+        action_select.on_value_change(lambda e: _on_action_change(e.value))
+
         def _populate_results(results: list[dict], summary: dict, action_msg: str = ""):
             total_card.set_text(str(summary["total"]))
             valid_card.set_text(str(summary["valid"]))
@@ -884,6 +914,7 @@ def build_validate_tab():
             invalid_table.rows = [
                 {
                     "filename": r.get("filename", ""),
+                    "subdir": _extract_subdir(r.get("path", "")),
                     "reason": r.get("reason", ""),
                     "dim": f"{r.get('width', 0)}×{r.get('height', 0)}"
                            if r.get("width") else "—",
@@ -899,20 +930,35 @@ def build_validate_tab():
                 + (f"\n{action_msg}" if action_msg else "")
             )
 
-        def on_run():
+        def _maybe_warn_full_rejection(summary: dict):
+            """%100 invalid çıkarsa kullanıcıyı uyar — threshold'lar muhtemelen
+            çok sıkı. (CLI'de tqdm sonrası reason listesi zaten gösterir;
+            UI'da explicit warning daha keşfedilebilir.)"""
+            if summary["total"] > 0 and summary["invalid"] == summary["total"]:
+                ui.notify(
+                    "⚠ %100 reddedildi — threshold'larınız çok sıkı olabilir. "
+                    "Threshold ayarlarını gevşetmeyi deneyin.",
+                    type="warning",
+                    timeout=8000,
+                )
+
+        async def on_run():
             err = _validate_inputs()
             if err:
                 ui.notify(err, type="negative")
                 return
 
+            run_btn.disable()
+            progress_bar.visible = True
+            progress_bar.set_value(0)
             try:
                 config = _build_config()
                 validator = FileValidator(config)
-                # Scan kapsamı: validator'ın kabul ettiği uzantılar (config-driven)
                 exts = {f".{f}" for f in config["file_validation"]["allowed_formats"]}
-                # Default tarama uzantılarını da dahil et — invalid_format'a düşsünler
                 exts |= {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
+                progress_label.set_text("Tarama…")
+                await asyncio.sleep(0)
                 images = validate_collect_images(
                     STATE.dataset_path,
                     recursive=recursive_check.value,
@@ -922,28 +968,36 @@ def build_validate_tab():
                     ui.notify("Hiç dosya bulunamadı", type="warning")
                     return
 
-                # Validate
-                results = [validator.validate(p).to_dict() for p in images]
-                valid = sum(1 for r in results if r["valid"])
-                invalid = len(results) - valid
+                # Validate — chunk'lar halinde, her N dosyada bir UI'ı yenile
+                total = len(images)
+                results: list[dict] = []
+                valid = invalid = 0
                 reasons: dict[str, int] = {}
-                for r in results:
-                    if not r["valid"]:
-                        reasons[r["reason"]] = reasons.get(r["reason"], 0) + 1
+                update_every = max(1, total // 100)
+                progress_label.set_text(f"0 / {total}")
+
+                for i, img in enumerate(images):
+                    r = validator.validate(img)
+                    results.append(r.to_dict())
+                    if r.valid:
+                        valid += 1
+                    else:
+                        invalid += 1
+                        reasons[r.reason] = reasons.get(r.reason, 0) + 1
+                    if (i + 1) % update_every == 0 or (i + 1) == total:
+                        progress_bar.set_value((i + 1) / total)
+                        progress_label.set_text(f"{i + 1} / {total}")
+                        await asyncio.sleep(0)
+
                 summary = {
-                    "total": len(results),
+                    "total": total,
                     "valid": valid,
                     "invalid": invalid,
                     "reasons": reasons,
                 }
 
-                # Aksiyon
                 action = action_select.value
-                action_msg = ""
-                report_path: Optional[Path] = None
-
                 if action != "none":
-                    # Delete + dry-run değilse + yes flag yoksa → onay modal
                     if action == "delete" and not dryrun_check.value and not yes_check.value:
                         _confirm_delete_dialog(
                             invalid,
@@ -951,12 +1005,13 @@ def build_validate_tab():
                                 action, results, summary, exts
                             ),
                         )
+                        _maybe_warn_full_rejection(summary)
                         return
-
                     _execute_action(action, results, summary, exts)
-                    return  # action içinde populate edildi
+                    _maybe_warn_full_rejection(summary)
+                    return
 
-                # Sadece rapor (action=none): rapor dataset altına yazılır
+                # action="none": sadece rapor
                 report_path = Path(STATE.dataset_path) / VALIDATE_REPORT_NAME
                 _write_report_helper(
                     report_path,
@@ -975,13 +1030,18 @@ def build_validate_tab():
                     action_msg=f"Rapor: {report_path}",
                 )
                 ui.notify(
-                    f"{invalid}/{len(results)} hatalı (sadece raporlandı)",
+                    f"{invalid}/{total} hatalı (sadece raporlandı)",
                     type="info",
                 )
+                _maybe_warn_full_rejection(summary)
                 STATE.notify_change()
 
             except Exception as e:
                 ui.notify(f"Validate hatası: {e}", type="negative")
+            finally:
+                progress_bar.visible = False
+                progress_label.set_text("")
+                run_btn.enable()
 
         def _confirm_delete_dialog(invalid_count: int, *, on_confirm):
             with ui.dialog() as dlg, ui.card().classes("w-[500px]"):
