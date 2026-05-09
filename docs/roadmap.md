@@ -13,7 +13,7 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 |---|---|---|---|---|---|
 | 00 | media-organizer | **v0.5.1** ✓ | ✓ | **wired** ✓ | CLI parity %100; recursive flat/tree, undo + cleanup |
 | 01 | media-validator | **v0.4.0** ✓ | ✓ | stub | recursive default True (BC) + tree-preserving move (00 organize tree çıktısıyla cross-tool tutarlı), 45 test |
-| 02 | media-deduplicator | **v1.2.1** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri, gallery + lightbox + zoom + carousel, 65 test |
+| 02 | media-deduplicator | **v1.2.2** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri + tree-preserving move (cross-tool tutarlılık), 65 test |
 | 03 | media-quality-checker | **v1.0.1** ✓ | ✓ | stub | clean release + tree-preserving move (cross-tool tutarlılık), 4 composite check (blur/brightness/contrast/bpp), action+undo, 45 test |
 | 04 | media-watermark-detector | **v1.0.1** ✓ | ✓ | stub | clean release + tree-preserving move (cross-tool tutarlılık), YOLOv8 detect, 34 test |
 | 05 | media-resizer | **v1.0.1** ✓ | ✓ | stub | clean release + dry-run wire fix: Lanczos batch (copy/in-place mode), dry-run, action+undo, 20 test |
@@ -108,6 +108,7 @@ Mevcut tag'ler:
 - `media-watermark-detector/v1.0.0` — clean release: YOLOv8 detection + cleanup, scope daraltıldı (inpainting+training silindi), 33 test (eski `watermark-detection` paketinin yerine)
 - `media-resizer/v1.0.1` — `--dry-run` flag wire fix: library tarafında zaten desteklenen dry-run resize_dataset+resize_one signature'ına eklendi, run.py wrapper'ı bağladı, rapora `dry_run` alanı eklendi; +1 unit test (20 toplam)
 - `media-resizer/v1.0.0` — clean release: tek run.py, Lanczos batch (copy/in-place), action+undo, 19 test (eski `image-resizer` paketinin yerine)
+- `media-deduplicator/v1.2.2` — tree-preserving move (apply_action `scan_result.source_root` ile `relative_to` mirror); +1 regression test (65 toplam)
 - `media-validator/v0.4.0` — pipeline cross-tool tutarlılığı: recursive default True (BC change; opt-out `--no-recursive`), tree-preserving move (`relative_to(source_root)` mirror); +2 regression test (45 toplam)
 - `media-quality-checker/v1.0.1` — tree-preserving move: subdir hiyerarşisi `_unique_target` flat collision yerine korunur; +1 regression test (45 toplam)
 - `media-watermark-detector/v1.0.1` — tree-preserving move (aynı pattern); +1 regression test (34 toplam)
