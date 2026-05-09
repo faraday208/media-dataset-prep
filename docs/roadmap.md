@@ -16,8 +16,8 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 | 02 | media-deduplicator | **v1.2.1** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri, gallery + lightbox + zoom + carousel, 65 test |
 | 03 | media-quality-checker | **v1.0.0** ✓ | ✓ | stub | clean release: tek run.py, 4 composite check (blur/brightness/contrast/bpp), action+undo, 44 test |
 | 04 | media-watermark-detector | **v1.0.0** ✓ | ✓ | stub | clean release: YOLOv8 detect + cleanup, scope daraltıldı (inpainting/training silindi), 33 test |
-| 05 | media-resizer | **v1.0.0** ✓ | ✓ | stub | clean release: Lanczos batch (copy/in-place mode), action+undo, 19 test |
-| 06 | media-captioner | **v1.0.0** ✓ | ✓ | stub | clean release: Qwen3-VL 5-pass multi-pass + json→txt export + undo, 14 test |
+| 05 | media-resizer | **v1.0.1** ✓ | ✓ | stub | clean release + dry-run wire fix: Lanczos batch (copy/in-place mode), dry-run, action+undo, 20 test |
+| 06 | media-captioner | **v1.0.1** ✓ | ✓ | stub | clean release + undo veri kaybı bug fix: Qwen3-VL 5-pass + json→txt export + undo (snapshot-diff: yabancı dosya koruması), 15 test |
 | 07 | media-golden-set | **v1.0.0** ✓ | ✓ | stub | clean release: quality+caption-aware cherry-pick (bucket + face-target + character filter), action+undo, 35 test |
 
 ✓ = bitti  ·  ? = denetlenmedi  ·  stub = "coming soon" placeholder  ·  — = bu projede sürüm bilgisi tutulmuyor (tool repo'sundan oku)
@@ -106,6 +106,8 @@ Mevcut tag'ler:
 - `media-deduplicator/v1.0.0` — clean release: tek run.py, exact+similar mode, action layer, undo, 41 test (eski `duplicate-image-finder` paketinin yerine)
 - `media-quality-checker/v1.0.0` — clean release: 4 composite quality check (blur/brightness/contrast/bpp), action+undo, 44 test (eski `image-quality-checker` paketinin yerine)
 - `media-watermark-detector/v1.0.0` — clean release: YOLOv8 detection + cleanup, scope daraltıldı (inpainting+training silindi), 33 test (eski `watermark-detection` paketinin yerine)
+- `media-resizer/v1.0.1` — `--dry-run` flag wire fix: library tarafında zaten desteklenen dry-run resize_dataset+resize_one signature'ına eklendi, run.py wrapper'ı bağladı, rapora `dry_run` alanı eklendi; +1 unit test (20 toplam)
 - `media-resizer/v1.0.0` — clean release: tek run.py, Lanczos batch (copy/in-place), action+undo, 19 test (eski `image-resizer` paketinin yerine)
+- `media-captioner/v1.0.1` — kritik undo veri kaybı bug'ı düzeltmesi: pre-existing yabancı .json/.txt dosyaları (önceki pipeline adımlarından `quality_report.json`, kullanıcı `README.txt` vb.) artık undo listesine girmiyor — snapshot-diff ile sadece bu run'da yaratılanlar saklanır; +1 regression test (15 toplam)
 - `media-captioner/v1.0.0` — clean release: 5-pass multi-pass captioning (Qwen3-VL via Ollama), JSON→TXT export, undo, scope daraltıldı (Gradio json-debugger + server scripts + archive silindi), 14 test (eski `image-captioner` paketinin yerine)
 - `media-golden-set/v1.0.0` — clean release: quality+caption-aware cherry-pick (bucket + face-target + character filter), action+undo, scope daraltıldı (Gradio UI silindi), 35 test (eski `golden-set-generator` paketinin yerine)
