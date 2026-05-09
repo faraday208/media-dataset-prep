@@ -33,9 +33,9 @@ def test_pipeline_steps_definition_complete():
         assert isinstance(name, str) and name
         assert isinstance(desc, str) and desc
         assert isinstance(wired, bool)
-    # 00 organize, 01 validate, 02 duplicate, 03 quality wired
+    # Tüm 8 adım wired
     wired_indices = [s[0] for s in ui.PIPELINE_STEPS if s[3]]
-    assert wired_indices == [0, 1, 2, 3]
+    assert wired_indices == [0, 1, 2, 3, 4, 5, 6, 7]
 
 
 def test_scan_dataset_stats_handles_empty_dir(tmp_path):
@@ -180,3 +180,21 @@ def test_step_status_done_when_report_exists(tmp_path):
     assert ui.step_status(0) == "✓"
     # Cleanup
     ui.STATE.last_report_paths = {}
+
+
+def test_all_wired_builders_callable():
+    """8 step için 8 builder fonksiyonu var ve callable."""
+    import ui
+    expected = [
+        "build_organize_tab",
+        "build_validate_tab",
+        "build_duplicate_tab",
+        "build_quality_tab",
+        "build_watermark_tab",
+        "build_resize_tab",
+        "build_caption_tab",
+        "build_golden_set_tab",
+    ]
+    for name in expected:
+        fn = getattr(ui, name, None)
+        assert callable(fn), f"{name} eksik veya callable değil"
