@@ -12,13 +12,13 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 | # | Tool | Tool sürümü | Conventions | Meta UI | Notlar |
 |---|---|---|---|---|---|
 | 00 | media-organizer | **v0.5.1** ✓ | ✓ | **wired** ✓ | CLI parity %100; recursive flat/tree, undo + cleanup |
-| 01 | media-validator | **v0.4.0** ✓ | ✓ | stub | recursive default True (BC) + tree-preserving move (00 organize tree çıktısıyla cross-tool tutarlı), 45 test |
-| 02 | media-deduplicator | **v1.2.2** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri + tree-preserving move (cross-tool tutarlılık), 65 test |
-| 03 | media-quality-checker | **v1.0.1** ✓ | ✓ | stub | clean release + tree-preserving move (cross-tool tutarlılık), 4 composite check (blur/brightness/contrast/bpp), action+undo, 45 test |
-| 04 | media-watermark-detector | **v1.0.1** ✓ | ✓ | stub | clean release + tree-preserving move (cross-tool tutarlılık), YOLOv8 detect, 34 test |
-| 05 | media-resizer | **v1.0.1** ✓ | ✓ | stub | clean release + dry-run wire fix: Lanczos batch (copy/in-place mode), dry-run, action+undo, 20 test |
-| 06 | media-captioner | **v1.0.1** ✓ | ✓ | stub | clean release + undo veri kaybı bug fix: Qwen3-VL 5-pass + json→txt export + undo (snapshot-diff: yabancı dosya koruması), 15 test |
-| 07 | media-golden-set | **v1.0.1** ✓ | ✓ | stub | clean release + recursive scan + tree-preserving copy + undo conflict guard, 39 test |
+| 01 | media-validator | **v0.4.0** ✓ | ✓ | wired ✓ | recursive default True (BC) + tree-preserving move, 45 test |
+| 02 | media-deduplicator | **v1.2.2** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri + tree-preserving move, 65 test |
+| 03 | media-quality-checker | **v1.0.1** ✓ | ✓ | wired ✓ | 4 composite check + tree-preserving move, action+undo, 45 test |
+| 04 | media-watermark-detector | **v1.0.1** ✓ | ✓ | **wired** ✓ | YOLOv8 detect + tree-preserving move + invalid table, 34 test |
+| 05 | media-resizer | **v1.0.1** ✓ | ✓ | **wired** ✓ | Lanczos batch (copy/in-place) + dry-run + undo (copy mode), 20 test |
+| 06 | media-captioner | **v1.0.1** ✓ | ✓ | **wired** ✓ | Qwen3-VL 5-pass + JSON→TXT export + undo + caption review editor (görsel + short/medium/long edit + 5-pass structured), 15 test |
+| 07 | media-golden-set | **v1.0.1** ✓ | ✓ | **wired** ✓ | Quality+caption-aware cherry-pick (recursive + tree-preserving copy) + selection preview + bucket dağılım, 39 test |
 
 ✓ = bitti  ·  ? = denetlenmedi  ·  stub = "coming soon" placeholder  ·  — = bu projede sürüm bilgisi tutulmuyor (tool repo'sundan oku)
 
@@ -77,7 +77,10 @@ dry-run preview + invalid table + undo butonu.
 - [x] **02 duplicate** UI wire-up — gallery + lightbox (carousel + zoom + BPP göstergesi)
 - [x] **NiceGUI image gallery** reusable pattern (02'de kuruldu, 03/06'da yeniden kullanılacak)
 - [ ] **State persistence** (JSON sidecar): UI session bilgisi diske yazılsın
-- [ ] **06 caption** wire-up (görsel + caption editor)
+- [x] **06 caption** wire-up — gallery + 5-pass JSON editor (short/medium/long edit + Save&Approve)
+- [x] **07 golden-set** wire-up — form + selection preview gallery + bucket dağılım
+- [x] **04 watermark** wire-up — form + invalid table + tree-preserving move
+- [x] **05 resize** wire-up — form + copy/in-place mode + dry-run + undo
 
 ## Açık tasarım soruları
 

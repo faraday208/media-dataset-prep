@@ -56,6 +56,39 @@ from quality_core import (  # noqa: E402
     write_report as quality_write_report,
     DEFAULT_REPORT_NAME as QUALITY_REPORT_NAME,
 )
+# media-captioner (tools/06-caption) — caption_core paketi
+from caption_core import batch_client as caption_batch_client  # noqa: E402
+from caption_core.batch_client import (  # noqa: E402
+    PASS_CONFIG as CAPTION_PASS_CONFIG,
+    SUPPORTED_EXTENSIONS as CAPTION_SUPPORTED_EXTENSIONS,
+    check_server_health as caption_check_server_health,
+)
+from caption_core.json_to_txt import extract_captions as caption_extract_captions  # noqa: E402
+# media-golden-set (tools/07-golden-set) — goldenset_core paketi
+from goldenset_core import (  # noqa: E402
+    apply_selection as golden_apply_selection,
+    parse_distribution as golden_parse_distribution,
+    select as golden_select,
+    undo_from_report as golden_undo_from_report,
+    write_report as golden_write_report,
+)
+# media-watermark-detector (tools/04-watermark) — watermark_core paketi
+from watermark_core import (  # noqa: E402
+    apply_action as watermark_apply_action,
+    find_watermarks,
+    undo_from_report as watermark_undo_from_report,
+    write_report as watermark_write_report,
+    DEFAULT_CONFIDENCE as WATERMARK_DEFAULT_CONFIDENCE,
+    DEFAULT_MODEL_PATH as WATERMARK_DEFAULT_MODEL_PATH,
+    DEFAULT_REPORT_NAME as WATERMARK_REPORT_NAME,
+)
+# media-resizer (tools/05-resize) — resize_core paketi
+from resize_core import (  # noqa: E402
+    resize_dataset,
+    undo_from_report as resize_undo_from_report,
+    write_report as resize_write_report,
+    DEFAULT_REPORT_NAME as RESIZE_REPORT_NAME,
+)
 
 # Step 00 için kullanılan medya uzantıları
 MEDIA_EXTENSIONS = media_organizer.MEDIA_EXTENSIONS
@@ -107,10 +140,10 @@ PIPELINE_STEPS: list[tuple[int, str, str, bool]] = [
     (1, "Validate", "Format ve dosya bütünlüğü kontrolü", True),
     (2, "Duplicate", "Birebir + benzer kopya tespiti", True),
     (3, "Quality", "Blur, brightness, contrast, BPP metrikleri", True),
-    (4, "Watermark", "YOLOv8 ile filigran tespit/temizleme", False),
-    (5, "Resize", "Lanczos ile boyutlandırma", False),
-    (6, "Caption", "Qwen3-VL multi-pass caption", False),
-    (7, "Golden Set", "Manuel cherry-pick", False),
+    (4, "Watermark", "YOLOv8 ile filigran tespit + filtreleme", True),
+    (5, "Resize", "Lanczos batch resize (copy/in-place)", True),
+    (6, "Caption", "Qwen3-VL multi-pass caption + insan onayı", True),
+    (7, "Golden Set", "Quality + caption-aware cherry-pick", True),
 ]
 
 
@@ -2511,6 +2544,1213 @@ def build_quality_tab():
         undo_btn.on("click", lambda: _run_undo(dry_run=False))
 
 
+def build_watermark_tab():
+    """04 — Watermark: YOLOv8 detect + invalid-action (move/delete) + undo.
+    Form-only: kullanıcı model/confidence ayarlar, invalid-action seçer."""
+    with ui.column().classes("w-full max-w-screen-xl mx-auto p-6 gap-4"):
+        ui.label("04 — Watermark").classes("text-2xl font-semibold")
+        ui.label(
+            "YOLOv8 ile watermark tespit. Watermark'lı dosyaları rapor / "
+            "move (tree-preserving) / delete. Inpainting yok — scope-out."
+        ).classes("text-sm text-slate-600")
+
+        with ui.grid(columns="1fr 1fr").classes("w-full gap-6 mt-2"):
+            # Sol: form
+            with ui.card().classes("w-full"):
+                ui.label("Configuration").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    input_dir_input = ui.input(
+                        "Dataset klasörü",
+                        value=STATE.dataset_path or "",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            input_dir_input, title="Dataset klasörü seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                recursive_check = ui.checkbox(
+                    "Recursive — alt klasörler", value=True
+                )
+
+                model_input = ui.input(
+                    "YOLO model path", value=WATERMARK_DEFAULT_MODEL_PATH,
+                ).props("dense outlined").classes("w-full")
+
+                confidence_input = ui.number(
+                    "Confidence eşiği",
+                    value=WATERMARK_DEFAULT_CONFIDENCE,
+                    min=0.0, max=1.0, step=0.05, format="%.2f",
+                ).props("dense outlined").classes("w-full")
+
+                action_select = ui.select(
+                    {
+                        "none": "Sadece raporla (default)",
+                        "move": "/rejected'a taşı (undoable, tree-preserve)",
+                        "delete": "Sil (irreversible)",
+                    },
+                    label="Watermark'lı için aksiyon",
+                    value="none",
+                ).props("dense outlined").classes("w-full")
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    invalid_dir_input = ui.input(
+                        "Rejected klasörü",
+                        placeholder="move için zorunlu",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            invalid_dir_input, title="Rejected dizini seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                with ui.row().classes("gap-3 mt-1"):
+                    dryrun_check = ui.checkbox("Dry-run", value=True)
+                    yes_check = ui.checkbox("Onaysız (delete)", value=False)
+
+                with ui.row().classes("gap-2 mt-3 w-full items-center"):
+                    run_btn = ui.button("Watermark scan").props(
+                        "color=primary no-caps"
+                    )
+                progress_label = ui.label("").classes("text-xs text-slate-600")
+                progress_bar = ui.linear_progress(
+                    value=0, show_value=False
+                ).classes("w-full")
+                progress_bar.visible = False
+
+                ui.separator().classes("my-3")
+                ui.label("Undo").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                undo_input = ui.input(
+                    "watermark_report.json yolu",
+                    placeholder="(move sonrası otomatik dolar)",
+                ).props("dense outlined").classes("w-full")
+                undo_btn = ui.button("Undo").props(
+                    "outline color=grey-7 no-caps"
+                )
+
+            # Sağ: sonuç
+            with ui.card().classes("w-full"):
+                ui.label("Sonuç").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                summary_label = ui.label(
+                    "Henüz scan çalıştırılmadı."
+                ).classes("text-sm text-slate-600 italic mt-1")
+                with ui.row().classes("w-full justify-around mt-2"):
+                    with ui.column().classes("items-center gap-0"):
+                        total_card = ui.label("—").classes(
+                            "text-3xl font-bold text-slate-700"
+                        )
+                        ui.label("Total").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        clean_card = ui.label("—").classes(
+                            "text-3xl font-bold text-green-600"
+                        )
+                        ui.label("Temiz").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        wm_card = ui.label("—").classes(
+                            "text-3xl font-bold text-red-600"
+                        )
+                        ui.label("Watermark'lı").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+
+                ui.separator().classes("my-2")
+                wm_table = ui.table(
+                    columns=[
+                        {"name": "filename", "label": "Dosya", "field": "filename", "align": "left", "sortable": True},
+                        {"name": "subdir", "label": "Subdir", "field": "subdir", "align": "left", "sortable": True},
+                        {"name": "count", "label": "Det", "field": "count", "align": "right", "sortable": True},
+                        {"name": "max_conf", "label": "Max conf", "field": "max_conf", "align": "right", "sortable": True},
+                    ],
+                    rows=[],
+                    pagination=10,
+                ).classes("w-full mt-1")
+
+        def _do_run():
+            d = (input_dir_input.value or "").strip()
+            if not d:
+                ui.notify("Dataset klasörü gerekli", type="warning")
+                return
+            input_dir = Path(d)
+            if not input_dir.is_dir():
+                ui.notify(f"Geçerli dizin değil: {input_dir}", type="negative")
+                return
+
+            action = action_select.value
+            invalid_dir = (invalid_dir_input.value or "").strip()
+            if action == "move" and not invalid_dir:
+                ui.notify("Move için rejected klasörü gerekli", type="warning")
+                return
+
+            run_btn.disable()
+            progress_bar.visible = True
+            progress_label.text = "YOLO inference başladı..."
+
+            def _progress_cb(current: int, total: int, msg: str):
+                if total > 0:
+                    progress_bar.value = current / total
+                progress_label.text = f"{msg} ({current}/{total})"
+
+            try:
+                sr = find_watermarks(
+                    input_dir,
+                    model_path=model_input.value,
+                    confidence=float(confidence_input.value or 0.25),
+                    recursive=bool(recursive_check.value),
+                    progress_cb=_progress_cb,
+                )
+            except FileNotFoundError as e:
+                progress_bar.visible = False
+                run_btn.enable()
+                progress_label.text = f"Hata: {e}"
+                ui.notify(f"Model bulunamadı: {e}", type="negative")
+                return
+            except RuntimeError as e:
+                progress_bar.visible = False
+                run_btn.enable()
+                progress_label.text = f"Hata: {e}"
+                ui.notify(f"Inference hatası: {e}", type="negative")
+                return
+
+            ar = watermark_apply_action(
+                sr.results,
+                source_root=input_dir,
+                action=action,
+                invalid_dir=invalid_dir or None,
+                dry_run=bool(dryrun_check.value),
+            )
+
+            # Rapor yolu çözümle
+            if action == "move" and invalid_dir:
+                report_path = Path(invalid_dir) / WATERMARK_REPORT_NAME
+            else:
+                report_path = input_dir / WATERMARK_REPORT_NAME
+            try:
+                watermark_write_report(
+                    report_path,
+                    scan_result=sr, action_result=ar,
+                    recursive=bool(recursive_check.value),
+                )
+            except Exception as e:  # noqa: BLE001
+                ui.notify(f"Rapor yazma hatası: {e}", type="negative")
+
+            progress_bar.visible = False
+            run_btn.enable()
+            mode = " (DRY-RUN)" if dryrun_check.value else ""
+            summary_label.text = (
+                f"Total: {sr.total_scanned}, Watermark: {sr.invalid_count}, "
+                f"Action: {ar.action}{mode}"
+            )
+            total_card.text = str(sr.total_scanned)
+            clean_card.text = str(sr.valid_count)
+            wm_card.text = str(sr.invalid_count)
+
+            # Invalid table
+            rows = []
+            for r in sr.results:
+                if r.get("valid"):
+                    continue
+                p = Path(r.get("path") or r.get("filename", ""))
+                try:
+                    subdir = str(p.parent.relative_to(input_dir.resolve()))
+                except (ValueError, OSError):
+                    subdir = str(p.parent.name)
+                dets = r.get("detections") or []
+                max_conf = (
+                    max((d.get("confidence", 0) for d in dets), default=0.0)
+                    if dets else 0.0
+                )
+                rows.append({
+                    "filename": p.name,
+                    "subdir": subdir if subdir != "." else "—",
+                    "count": r.get("detection_count", 0),
+                    "max_conf": f"{max_conf:.2f}" if max_conf else "—",
+                })
+            wm_table.rows = rows
+
+            STATE.last_report_paths[4] = str(report_path)
+            undo_input.value = str(report_path)
+            ui.notify(
+                f"Watermark scan: {sr.invalid_count}/{sr.total_scanned} watermark'lı{mode}",
+                type="positive",
+            )
+            STATE.notify_change()
+
+        def _do_undo():
+            rp = (undo_input.value or "").strip()
+            if not rp:
+                ui.notify("Rapor yolu gerekli", type="warning")
+                return
+            try:
+                summary = watermark_undo_from_report(Path(rp), dry_run=False)
+            except Exception as e:  # noqa: BLE001
+                ui.notify(f"Undo hatası: {e}", type="negative")
+                return
+            ui.notify(
+                f"Undo: restored={summary['restored']} skipped={summary['skipped']}",
+                type="positive",
+            )
+            STATE.notify_change()
+
+        run_btn.on("click", _do_run)
+        undo_btn.on("click", _do_undo)
+
+
+def build_resize_tab():
+    """05 — Resize: Lanczos batch resize (copy/in-place) + undo (copy mode)."""
+    with ui.column().classes("w-full max-w-screen-xl mx-auto p-6 gap-4"):
+        ui.label("05 — Resize").classes("text-2xl font-semibold")
+        ui.label(
+            "Lanczos algoritmasıyla aspect-preserving toplu resize. "
+            "Copy mode (orijinal korunur) veya in-place (orijinal kaybolur)."
+        ).classes("text-sm text-slate-600")
+
+        with ui.grid(columns="1fr 1fr").classes("w-full gap-6 mt-2"):
+            with ui.card().classes("w-full"):
+                ui.label("Configuration").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    input_dir_input = ui.input(
+                        "Source dataset",
+                        value=STATE.dataset_path or "",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            input_dir_input, title="Source seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                mode_select = ui.select(
+                    {
+                        "copy": "Copy — orijinal korunur, output'a yazılır (default)",
+                        "in-place": "In-place — orijinal kaybolur (UNDO YOK)",
+                    },
+                    label="Mode",
+                    value="copy",
+                ).props("dense outlined").classes("w-full")
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap") as out_row:
+                    out_input = ui.input(
+                        "Output (copy mode için)",
+                        placeholder="copy mode için zorunlu",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            out_input, title="Output seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                def _toggle_out(val: str):
+                    out_row.visible = (val == "copy")
+                mode_select.on_value_change(lambda e: _toggle_out(e.value))
+
+                recursive_check = ui.checkbox("Recursive", value=True)
+
+                with ui.row().classes("w-full gap-3"):
+                    max_w_input = ui.number(
+                        "Max width", value=1024, min=64, step=64,
+                    ).props("dense outlined").classes("flex-grow")
+                    max_h_input = ui.number(
+                        "Max height", value=1024, min=64, step=64,
+                    ).props("dense outlined").classes("flex-grow")
+
+                quality_input = ui.number(
+                    "JPEG quality", value=95, min=60, max=100, step=1,
+                ).props("dense outlined").classes("w-full")
+
+                dryrun_check = ui.checkbox("Dry-run", value=False)
+
+                with ui.row().classes("gap-2 mt-3 w-full items-center"):
+                    run_btn = ui.button("Resize").props("color=primary no-caps")
+                progress_label = ui.label("").classes("text-xs text-slate-600")
+                progress_bar = ui.linear_progress(
+                    value=0, show_value=False
+                ).classes("w-full")
+                progress_bar.visible = False
+
+                ui.separator().classes("my-3")
+                ui.label("Undo (sadece copy mode)").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                undo_input = ui.input(
+                    "resize_report.json yolu",
+                    placeholder="(run sonrası otomatik dolar)",
+                ).props("dense outlined").classes("w-full")
+                undo_btn = ui.button("Undo").props(
+                    "outline color=grey-7 no-caps"
+                )
+
+            # Sağ: sonuç
+            with ui.card().classes("w-full"):
+                ui.label("Sonuç").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                summary_label = ui.label(
+                    "Henüz resize çalıştırılmadı."
+                ).classes("text-sm text-slate-600 italic mt-1")
+                with ui.row().classes("w-full justify-around mt-2"):
+                    with ui.column().classes("items-center gap-0"):
+                        total_card = ui.label("—").classes(
+                            "text-3xl font-bold text-slate-700"
+                        )
+                        ui.label("Total").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        resized_card = ui.label("—").classes(
+                            "text-3xl font-bold text-blue-600"
+                        )
+                        ui.label("Resized").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        skipped_card = ui.label("—").classes(
+                            "text-3xl font-bold text-slate-400"
+                        )
+                        ui.label("Skipped").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+
+        def _do_run():
+            d = (input_dir_input.value or "").strip()
+            if not d:
+                ui.notify("Source gerekli", type="warning")
+                return
+            input_dir = Path(d)
+            if not input_dir.is_dir():
+                ui.notify(f"Geçerli dizin değil: {input_dir}", type="negative")
+                return
+
+            mode = mode_select.value
+            out_dir = (out_input.value or "").strip()
+            if mode == "copy" and not out_dir:
+                ui.notify("Copy mode için Output gerekli", type="warning")
+                return
+
+            run_btn.disable()
+            progress_bar.visible = True
+            progress_label.text = "Resize başladı..."
+
+            def _progress_cb(current: int, total: int, msg: str):
+                if total > 0:
+                    progress_bar.value = current / total
+                progress_label.text = f"{msg} ({current}/{total})"
+
+            try:
+                sr = resize_dataset(
+                    input_dir,
+                    max_size=(int(max_w_input.value or 1024),
+                              int(max_h_input.value or 1024)),
+                    mode=mode,
+                    output_dir=out_dir if mode == "copy" else None,
+                    quality=int(quality_input.value or 95),
+                    recursive=bool(recursive_check.value),
+                    dry_run=bool(dryrun_check.value),
+                    progress_cb=_progress_cb,
+                )
+            except Exception as e:  # noqa: BLE001
+                progress_bar.visible = False
+                run_btn.enable()
+                progress_label.text = f"Hata: {e}"
+                ui.notify(f"Resize hatası: {e}", type="negative")
+                return
+
+            # Rapor
+            default_dir = Path(out_dir) if out_dir else input_dir
+            report_path = default_dir / RESIZE_REPORT_NAME
+            try:
+                resize_write_report(
+                    report_path,
+                    scan_result=sr,
+                    recursive=bool(recursive_check.value),
+                    dry_run=bool(dryrun_check.value),
+                )
+            except Exception as e:  # noqa: BLE001
+                ui.notify(f"Rapor yazma hatası: {e}", type="negative")
+
+            progress_bar.visible = False
+            run_btn.enable()
+            mode_lbl = " (DRY-RUN)" if dryrun_check.value else ""
+            summary_label.text = (
+                f"Total: {sr.total_scanned}, Resized: {sr.resized_count}, "
+                f"Skipped: {sr.skipped_count}, Errors: {sr.error_count}{mode_lbl}"
+            )
+            total_card.text = str(sr.total_scanned)
+            resized_card.text = str(sr.resized_count)
+            skipped_card.text = str(sr.skipped_count)
+
+            STATE.last_report_paths[5] = str(report_path)
+            undo_input.value = str(report_path)
+            ui.notify(
+                f"Resize: {sr.resized_count}/{sr.total_scanned} işlendi{mode_lbl}",
+                type="positive",
+            )
+
+        def _do_undo():
+            rp = (undo_input.value or "").strip()
+            if not rp:
+                ui.notify("Rapor yolu gerekli", type="warning")
+                return
+            try:
+                summary = resize_undo_from_report(Path(rp), dry_run=False)
+            except Exception as e:  # noqa: BLE001
+                ui.notify(f"Undo hatası: {e}", type="negative")
+                return
+            ui.notify(
+                f"Undo: removed={summary['removed']} skipped={summary['skipped']}",
+                type="positive",
+            )
+
+        run_btn.on("click", _do_run)
+        undo_btn.on("click", _do_undo)
+
+
+def build_caption_tab():
+    """06 — Caption: Qwen3-VL multi-pass captioning + insan onayı (review).
+
+    Flow:
+      1. Form: dataset path, model/server/workers, pass selector, character, ...
+      2. Run: batch_client.process_folder threaded → caption JSON'lar yazılır
+      3. Refresh gallery: img + medium caption preview (görsel klikleyince editor)
+      4. Editor dialog: short/medium/long edit + structured 5-pass tabs + Save
+      5. Export: JSON → TXT (caption_type seçilebilir)
+    """
+    import json
+    import threading
+
+    tab_state: dict = {
+        "thread": None,        # captioning arka plan thread
+        "cancelled": False,
+        "current_assets": [],  # [(img_path, caption_dict), ...]
+    }
+
+    with ui.column().classes("w-full max-w-screen-2xl mx-auto p-6 gap-4"):
+        ui.label("06 — Caption").classes("text-2xl font-semibold")
+        ui.label(
+            "Qwen3-VL multi-pass (5-pass) caption üretimi + insan onayı. "
+            "Tool batch_client'i Ollama HTTP backend'i ile çağırır; her pass "
+            "sonrası JSON birleştirilir. Gallery'den her görselin caption'ını "
+            "edit edebilirsin (AI etiketli veriyi training'e almadan ÖNCE)."
+        ).classes("text-sm text-slate-600")
+
+        with ui.grid(columns="380px 1fr").classes("w-full gap-6 mt-2"):
+            # ---------- Sol: Configuration ----------
+            with ui.card().classes("w-full"):
+                ui.label("Configuration").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    input_dir_input = ui.input(
+                        "Dataset klasörü",
+                        value=STATE.dataset_path or "",
+                        placeholder="/path/to/images",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            input_dir_input, title="Dataset klasörü seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                # Backend / connection
+                model_input = ui.input(
+                    "Model", value="huihui_ai/qwen3-vl-abliterated:30b-a3b-instruct",
+                ).props("dense outlined").classes("w-full")
+                server_input = ui.input(
+                    "Server URL", value="http://localhost:11434",
+                ).props("dense outlined").classes("w-full")
+
+                with ui.row().classes("w-full gap-3"):
+                    workers_input = ui.number(
+                        "Workers", value=4, min=1, step=1,
+                    ).props("dense outlined").classes("flex-grow")
+                    max_tokens_input = ui.number(
+                        "Max tokens", value=1024, min=128, step=128,
+                    ).props("dense outlined").classes("flex-grow")
+
+                pass_select = ui.select(
+                    {
+                        "all": "Tümü (5 pass)",
+                        "1": "1 — Face",
+                        "2": "2 — Body / Pose",
+                        "3": "3 — Clothing",
+                        "4": "4 — Scene / Camera",
+                        "5": "5 — Captioning",
+                    },
+                    label="Pass",
+                    value="all",
+                ).props("dense outlined").classes("w-full")
+
+                character_input = ui.input(
+                    "Character (prompt değişkeni)", value="woman",
+                ).props("dense outlined").classes("w-full")
+
+                with ui.row().classes("gap-3 mt-1"):
+                    overwrite_check = ui.checkbox("Overwrite", value=False)
+                    merge_only_check = ui.checkbox(
+                        "Merge only", value=False
+                    ).tooltip("Yeni pass yapmadan mevcut pass JSON'larını birleştir")
+
+                ui.separator().classes("my-2")
+                ui.label("Export").classes(
+                    "text-xs uppercase text-slate-500 tracking-wide"
+                )
+                caption_type_select = ui.select(
+                    {"short": "Short", "medium": "Medium", "long": "Long"},
+                    label="Export caption tipi",
+                    value="medium",
+                ).props("dense outlined").classes("w-full")
+
+                # Action buttons
+                with ui.row().classes("gap-2 mt-3 w-full items-center"):
+                    health_btn = ui.button("Health check").props(
+                        "outline color=grey-7 no-caps"
+                    )
+                    run_btn = ui.button("Caption + Export").props(
+                        "color=primary no-caps"
+                    )
+                    export_btn = ui.button("Sadece export").props(
+                        "outline color=positive no-caps"
+                    )
+                progress_label = ui.label("").classes("text-xs text-slate-600")
+                progress_bar = ui.linear_progress(
+                    value=0, show_value=False
+                ).classes("w-full")
+                progress_bar.visible = False
+
+                ui.separator().classes("my-3")
+                ui.label("Undo").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                undo_input = ui.input(
+                    "caption_report.json yolu",
+                    placeholder="(run sonrası otomatik dolar)",
+                ).props("dense outlined").classes("w-full")
+                undo_btn = ui.button("Undo").props(
+                    "outline color=grey-7 no-caps"
+                )
+
+            # ---------- Sağ: Gallery + Editor ----------
+            with ui.card().classes("w-full"):
+                with ui.row().classes("w-full items-center justify-between"):
+                    summary_label = ui.label(
+                        "Henüz caption üretilmedi."
+                    ).classes("text-sm text-slate-600 italic")
+                    refresh_btn = ui.button(
+                        "Yenile", icon="refresh"
+                    ).props("flat dense color=grey-7 no-caps")
+
+                gallery_grid = ui.grid(columns=4).classes("w-full gap-3 mt-2")
+
+        # ============= Helpers =============
+
+        def _input_dir() -> Optional[Path]:
+            v = (input_dir_input.value or "").strip()
+            if not v:
+                return None
+            p = Path(v)
+            return p if p.is_dir() else None
+
+        def _scan_caption_assets() -> list[tuple[Path, dict]]:
+            """Input dir'da görsel + yan-yana caption JSON çiftlerini topla."""
+            d = _input_dir()
+            if not d:
+                return []
+            assets: list[tuple[Path, dict]] = []
+            for ext in CAPTION_SUPPORTED_EXTENSIONS:
+                for img in d.glob(f"*{ext}"):
+                    cap_path = img.with_suffix(".json")
+                    if not cap_path.is_file():
+                        continue
+                    try:
+                        cap_data = json.loads(cap_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        cap_data = {}
+                    # Sadece caption JSON'larını al (pass JSON'ları .face.json, .body.json, vb.)
+                    # Final birleşik dosya .json (suffix yok). Filtre: 'captioning' veya 'face' anahtarı içermeli
+                    if any(k in cap_data for k in ("captioning", "face", "body", "clothing", "scene")):
+                        assets.append((img, cap_data))
+            return sorted(assets, key=lambda x: x[0].name)
+
+        def _refresh_gallery():
+            assets = _scan_caption_assets()
+            tab_state["current_assets"] = assets
+            gallery_grid.clear()
+            if not assets:
+                with gallery_grid:
+                    ui.label("Caption JSON'ı olan görsel yok.").classes(
+                        "text-sm text-slate-500 italic col-span-4"
+                    )
+                summary_label.text = "Caption üretilmedi (gallery boş)."
+                return
+            summary_label.text = f"{len(assets)} caption'lı görsel"
+
+            with gallery_grid:
+                for img_path, cap in assets:
+                    with ui.card().classes("p-2 cursor-pointer hover:shadow-lg") as card:
+                        ui.image(_path_to_url(str(img_path))).classes(
+                            "w-full h-40 object-cover rounded"
+                        )
+                        ui.label(img_path.name).classes(
+                            "text-xs text-slate-700 truncate mt-1"
+                        ).style("max-width: 100%")
+                        med = (cap.get("captioning") or {}).get("medium") or "—"
+                        ui.label(med).classes(
+                            "text-xs text-slate-500 line-clamp-3"
+                        ).style("max-width: 100%; min-height: 2.5rem;")
+                        card.on("click", lambda _e, ip=img_path, c=cap: _open_editor(ip, c))
+
+        def _open_editor(img_path: Path, cap: dict):
+            """Caption editor — short/medium/long edit + 5-pass structured."""
+            cap_path = img_path.with_suffix(".json")
+            with ui.dialog() as dialog, ui.card().style(
+                "max-width: 1200px; min-width: 900px; width: 90vw"
+            ):
+                with ui.row().classes("w-full gap-4 no-wrap"):
+                    # Görsel
+                    with ui.column().classes("w-1/2 gap-2"):
+                        ui.image(_path_to_url(str(img_path))).classes(
+                            "w-full max-h-96 object-contain rounded"
+                        )
+                        ui.label(img_path.name).classes("text-xs text-slate-500")
+
+                    # Caption editor
+                    with ui.column().classes("w-1/2 gap-2"):
+                        ui.label("Captions (edit)").classes(
+                            "text-sm uppercase text-slate-500 tracking-wide"
+                        )
+                        captioning = cap.get("captioning") or {}
+                        short_input = ui.textarea(
+                            "Short", value=captioning.get("short", "")
+                        ).props("dense outlined autogrow").classes("w-full")
+                        medium_input = ui.textarea(
+                            "Medium", value=captioning.get("medium", "")
+                        ).props("dense outlined autogrow").classes("w-full")
+                        long_input = ui.textarea(
+                            "Long", value=captioning.get("long", "")
+                        ).props("dense outlined autogrow").classes("w-full")
+
+                        with ui.expansion("5-pass structured (read-only)", icon="data_object").classes("w-full"):
+                            with ui.column().classes("gap-2 text-xs"):
+                                for key in ("face", "body", "clothing", "scene"):
+                                    ui.label(key.upper()).classes(
+                                        "text-xs uppercase text-slate-500"
+                                    )
+                                    ui.code(
+                                        json.dumps(cap.get(key) or {}, indent=2, ensure_ascii=False)
+                                    ).classes("text-xs w-full")
+
+                        with ui.row().classes("gap-2 mt-2 w-full justify-end"):
+                            ui.button("İptal", on_click=dialog.close).props(
+                                "flat color=grey-7 no-caps"
+                            )
+
+                            def _save():
+                                # Caption JSON'ı update et
+                                new_cap = dict(cap)
+                                new_cap["captioning"] = {
+                                    "short": (short_input.value or "").strip(),
+                                    "medium": (medium_input.value or "").strip(),
+                                    "long": (long_input.value or "").strip(),
+                                }
+                                # approved işareti — gelecek pipeline adımları için
+                                new_cap["_approved"] = True
+                                try:
+                                    cap_path.write_text(
+                                        json.dumps(new_cap, indent=2, ensure_ascii=False),
+                                        encoding="utf-8",
+                                    )
+                                except OSError as e:
+                                    ui.notify(f"Save hatası: {e}", type="negative")
+                                    return
+                                ui.notify(
+                                    f"Kaydedildi → {cap_path.name}", type="positive"
+                                )
+                                dialog.close()
+                                _refresh_gallery()
+
+                            ui.button("Kaydet & Onayla", on_click=_save).props(
+                                "color=positive no-caps"
+                            )
+            dialog.open()
+
+        # ============= Action handlers =============
+
+        def _do_health_check():
+            d = _input_dir()
+            srv = (server_input.value or "").strip()
+            if not srv:
+                ui.notify("Server URL gerekli", type="warning")
+                return
+            try:
+                ok = caption_check_server_health(srv, "ollama")
+            except Exception as e:
+                ui.notify(f"Health check hatası: {e}", type="negative")
+                return
+            if ok:
+                ui.notify(f"✓ Server up: {srv}", type="positive")
+            else:
+                ui.notify(f"⚠ Server cevap vermiyor: {srv}", type="negative")
+
+        async def _do_run(*, export_only: bool):
+            d = _input_dir()
+            if not d:
+                ui.notify("Geçerli dataset klasörü seç", type="warning")
+                return
+            srv = (server_input.value or "").strip()
+            mdl = (model_input.value or "").strip()
+            ctype = caption_type_select.value
+            workers = int(workers_input.value or 4)
+            max_tokens = int(max_tokens_input.value or 1024)
+            character = (character_input.value or "woman").strip()
+            overwrite = bool(overwrite_check.value)
+            merge_only = bool(merge_only_check.value)
+
+            ps = pass_select.value
+            pass_nums = [1, 2, 3, 4, 5] if ps == "all" else [int(ps)]
+
+            run_btn.disable()
+            export_btn.disable()
+            progress_bar.visible = True
+            progress_label.text = "Başlatılıyor..."
+
+            # Long-running: background thread (NiceGUI'yi bloklamasın)
+            error_holder: dict = {"err": None}
+
+            def _worker():
+                try:
+                    if not export_only:
+                        caption_batch_client.process_folder(
+                            folder_path=str(d),
+                            server_url=srv,
+                            pass_nums=pass_nums,
+                            model=mdl,
+                            max_tokens=max_tokens,
+                            max_workers=workers,
+                            character_name=character,
+                            overwrite=overwrite,
+                            merge_only=merge_only,
+                            backend="ollama",
+                        )
+                    # Export TXT
+                    caption_extract_captions(str(d), ctype, overwrite=False)
+                except Exception as e:  # noqa: BLE001
+                    error_holder["err"] = str(e)
+
+            t = threading.Thread(target=_worker, daemon=True)
+            tab_state["thread"] = t
+            t.start()
+
+            # Periyodik progress refresh
+            while t.is_alive():
+                # input dir'da kaç JSON var
+                try:
+                    found = sum(1 for _ in d.glob("*.json"))
+                except OSError:
+                    found = 0
+                progress_label.text = f"Caption üretiliyor… ({found} JSON yazıldı)"
+                await asyncio.sleep(2)
+
+            t.join()
+
+            progress_bar.visible = False
+            run_btn.enable()
+            export_btn.enable()
+
+            if error_holder["err"]:
+                progress_label.text = f"Hata: {error_holder['err']}"
+                ui.notify(f"Captioning hatası: {error_holder['err']}", type="negative")
+                return
+
+            progress_label.text = "✓ Tamam"
+            # Rapor yolu otomatik undo'ya doldur
+            STATE.last_report_paths[6] = str(d / "caption_report.json")
+            undo_input.value = STATE.last_report_paths[6]
+            ui.notify("Caption + export tamamlandı", type="positive")
+            _refresh_gallery()
+
+        def _do_undo():
+            rp = (undo_input.value or "").strip()
+            if not rp:
+                ui.notify("Rapor yolu gerekli", type="warning")
+                return
+            rep_path = Path(rp)
+            if not rep_path.is_file():
+                ui.notify(f"Rapor bulunamadı: {rep_path}", type="negative")
+                return
+            try:
+                rep = json.loads(rep_path.read_text(encoding="utf-8"))
+                if rep.get("tool") != "media-captioner":
+                    ui.notify(
+                        f"Tool mismatch: {rep.get('tool')!r}", type="negative"
+                    )
+                    return
+                removed = skipped = 0
+                for entry in rep.get("actions", []):
+                    for path_str in entry.get("created_files", []):
+                        p = Path(path_str)
+                        if p.exists():
+                            try:
+                                p.unlink()
+                                removed += 1
+                            except OSError:
+                                skipped += 1
+                        else:
+                            skipped += 1
+                ui.notify(
+                    f"Undo: removed={removed} skipped={skipped}",
+                    type="positive",
+                )
+                _refresh_gallery()
+            except Exception as e:  # noqa: BLE001
+                ui.notify(f"Undo hatası: {e}", type="negative")
+
+        # Bind handlers
+        health_btn.on("click", _do_health_check)
+        run_btn.on("click", lambda: _do_run(export_only=False))
+        export_btn.on("click", lambda: _do_run(export_only=True))
+        refresh_btn.on("click", _refresh_gallery)
+        undo_btn.on("click", _do_undo)
+
+        # Tab açılınca / state değişince mevcut caption'ları göster
+        STATE.on_change(_refresh_gallery)
+        _refresh_gallery()
+
+
+def build_golden_set_tab():
+    """07 — Golden Set: quality+caption-aware cherry-pick form.
+
+    Form: source dataset + quality_report + count + distribution +
+    character + face-target + recursive + dry-run + force. Run sonucu:
+    selection stats (avg score, face count, bucket dağılım) + apply
+    sonucu (kaç kopyalandı). Tree-preserving copy (recursive aktifken).
+    """
+    import json
+
+    tab_state: dict = {"last_selection": None}
+
+    with ui.column().classes("w-full max-w-screen-xl mx-auto p-6 gap-4"):
+        ui.label("07 — Golden Set").classes("text-2xl font-semibold")
+        ui.label(
+            "Quality skoru + caption JSON'lardan cherry-pick. Distribution "
+            "dengeli olur (close-up/upper-body/full-body). Face-target ile "
+            "min N face-visible asset garantilenir (swap)."
+        ).classes("text-sm text-slate-600")
+
+        with ui.grid(columns="380px 1fr").classes("w-full gap-6 mt-2"):
+            # ---------- Sol: Configuration ----------
+            with ui.card().classes("w-full"):
+                ui.label("Configuration").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    src_input = ui.input(
+                        "Source dataset",
+                        value=STATE.dataset_path or "",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            src_input, title="Source dataset seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    out_input = ui.input(
+                        "Hedef golden-set klasörü",
+                    ).props("dense outlined").classes("flex-grow")
+                    ui.button(
+                        icon="folder_open",
+                        on_click=lambda: _open_browse_dialog(
+                            out_input, title="Golden-set hedefi seç"
+                        ),
+                    ).props("flat dense color=grey-7").tooltip("Browse")
+
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    rep_input = ui.input(
+                        "quality_report.json yolu",
+                        placeholder="dataset/quality_report.json",
+                    ).props("dense outlined").classes("flex-grow")
+
+                count_input = ui.number(
+                    "Count (toplam asset)", value=200, min=1, step=10,
+                ).props("dense outlined").classes("w-full")
+
+                distribution_input = ui.input(
+                    "Distribution",
+                    value="close-up:30,upper-body:30,full-body:40",
+                ).props("dense outlined").classes("w-full")
+
+                character_input = ui.input(
+                    "Character (opsiyonel)",
+                    placeholder="alpha / beta / boş",
+                ).props("dense outlined").classes("w-full")
+
+                face_target_input = ui.number(
+                    "Face target (min N face-visible)",
+                    value=0, min=0, step=10,
+                ).props("dense outlined").classes("w-full")
+
+                with ui.row().classes("gap-3 mt-1"):
+                    recursive_check = ui.checkbox(
+                        "Recursive (tree-preserve)", value=False
+                    )
+                    force_check = ui.checkbox("Force overwrite", value=False)
+                    dryrun_check = ui.checkbox("Dry-run", value=True)
+
+                with ui.row().classes("gap-2 mt-3 w-full items-center"):
+                    run_btn = ui.button("Cherry-pick").props(
+                        "color=primary no-caps"
+                    )
+                progress_label = ui.label("").classes("text-xs text-slate-600")
+
+                ui.separator().classes("my-3")
+                ui.label("Undo").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                undo_input = ui.input(
+                    "selection_report.json yolu",
+                    placeholder="(run sonrası otomatik dolar)",
+                ).props("dense outlined").classes("w-full")
+                undo_btn = ui.button("Undo").props(
+                    "outline color=grey-7 no-caps"
+                )
+
+            # ---------- Sağ: Sonuç + preview ----------
+            with ui.card().classes("w-full"):
+                ui.label("Sonuç").classes(
+                    "text-sm uppercase text-slate-500 tracking-wide"
+                )
+                summary_label = ui.label(
+                    "Henüz cherry-pick yapılmadı."
+                ).classes("text-sm text-slate-600 italic mt-1")
+
+                with ui.row().classes("w-full justify-around mt-2"):
+                    with ui.column().classes("items-center gap-0"):
+                        sel_card = ui.label("—").classes(
+                            "text-3xl font-bold text-slate-700"
+                        )
+                        ui.label("Selected").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        score_card = ui.label("—").classes(
+                            "text-3xl font-bold text-blue-600"
+                        )
+                        ui.label("Avg score").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        face_card = ui.label("—").classes(
+                            "text-3xl font-bold text-emerald-600"
+                        )
+                        ui.label("Face-visible").classes(
+                            "text-xs uppercase text-slate-500"
+                        )
+
+                ui.separator().classes("my-2")
+                ui.label("Bucket dağılım").classes(
+                    "text-xs uppercase text-slate-500 tracking-wide"
+                )
+                buckets_panel = ui.column().classes("w-full gap-1 mt-1")
+
+                ui.separator().classes("my-2")
+                ui.label("Seçim önizleme (ilk 24)").classes(
+                    "text-xs uppercase text-slate-500 tracking-wide"
+                )
+                preview_grid = ui.grid(columns=6).classes("w-full gap-2 mt-1")
+
+        # ============= Action handlers =============
+
+        def _do_run():
+            src = (src_input.value or "").strip()
+            out = (out_input.value or "").strip()
+            rep = (rep_input.value or "").strip()
+            if not src or not out or not rep:
+                ui.notify("Source, Output ve Report gerekli", type="warning")
+                return
+            src_p = Path(src)
+            out_p = Path(out)
+            rep_p = Path(rep)
+            if not src_p.is_dir():
+                ui.notify(f"Source dizin değil: {src_p}", type="negative")
+                return
+            if not rep_p.is_file():
+                ui.notify(f"Quality rapor bulunamadı: {rep_p}", type="negative")
+                return
+
+            try:
+                distribution = golden_parse_distribution(distribution_input.value)
+            except (ValueError, KeyError) as e:
+                ui.notify(f"Distribution parse hatası: {e}", type="negative")
+                return
+
+            count = int(count_input.value or 0)
+            if count <= 0:
+                ui.notify("Count pozitif olmalı", type="warning")
+                return
+
+            character = (character_input.value or "").strip() or None
+            face_target = int(face_target_input.value or 0)
+
+            run_btn.disable()
+            progress_label.text = "Seçim yapılıyor..."
+
+            try:
+                selection = golden_select(
+                    source=src_p, report=rep_p,
+                    count=count, distribution=distribution,
+                    character=character, face_target=face_target,
+                    recursive=bool(recursive_check.value),
+                )
+            except Exception as e:  # noqa: BLE001
+                progress_label.text = f"Hata: {e}"
+                run_btn.enable()
+                ui.notify(f"Selection hatası: {e}", type="negative")
+                return
+
+            if not selection.selected:
+                progress_label.text = "Boş seçim — filter sonrası asset kalmadı."
+                run_btn.enable()
+                ui.notify("Boş seçim — filter sonrası asset kalmadı", type="warning")
+                return
+
+            # Apply
+            try:
+                apply_result = golden_apply_selection(
+                    selection.selected,
+                    target_dir=out_p,
+                    source_root=src_p if recursive_check.value else None,
+                    force=bool(force_check.value),
+                    dry_run=bool(dryrun_check.value),
+                )
+            except FileExistsError as e:
+                progress_label.text = f"Hata: target dolu (force kullan)"
+                run_btn.enable()
+                ui.notify(str(e), type="negative")
+                return
+            except Exception as e:  # noqa: BLE001
+                progress_label.text = f"Apply hatası: {e}"
+                run_btn.enable()
+                ui.notify(f"Apply hatası: {e}", type="negative")
+                return
+
+            # Rapor
+            report_out = out_p / "selection_report.json"
+            cfg = {
+                "count": count,
+                "distribution": distribution,
+                "character": character,
+                "face_target": face_target,
+                "recursive": bool(recursive_check.value),
+                "force": bool(force_check.value),
+                "dry_run": bool(dryrun_check.value),
+                "input": str(src_p.resolve()),
+                "output": str(out_p.resolve()),
+                "quality_report": str(rep_p.resolve()),
+            }
+            try:
+                rp = golden_write_report(
+                    report_path=report_out,
+                    source_root=src_p,
+                    config=cfg,
+                    selection=selection,
+                    apply_result=apply_result,
+                )
+            except Exception as e:  # noqa: BLE001
+                ui.notify(f"Rapor yazma hatası: {e}", type="negative")
+                rp = None
+
+            # Sonuç güncelle
+            tab_state["last_selection"] = selection
+            sel_card.text = str(len(selection.selected))
+            score_card.text = f"{selection.average_score:.3f}"
+            face_card.text = str(selection.face_count)
+            mode = "(DRY-RUN)" if dryrun_check.value else ""
+            summary_label.text = (
+                f"{len(selection.selected)} / {count} seçildi {mode}"
+            )
+
+            # Bucket dağılım
+            buckets_panel.clear()
+            with buckets_panel:
+                for bucket, n in sorted(selection.selection_stats.items()):
+                    avail = selection.buckets_available.get(bucket, 0)
+                    goal = selection.goals.get(bucket, 0)
+                    ui.label(
+                        f"  {bucket}: {n} (hedef={goal}, havuz={avail})"
+                    ).classes("text-xs text-slate-700")
+
+            # Preview gallery
+            preview_grid.clear()
+            with preview_grid:
+                for asset in selection.selected[:24]:
+                    with ui.card().classes("p-1"):
+                        ui.image(_path_to_url(str(asset.path))).classes(
+                            "w-full h-24 object-cover rounded"
+                        )
+                        ui.label(asset.filename).classes(
+                            "text-xs text-slate-600 truncate"
+                        ).style("max-width: 100%")
+                        ui.label(f"{asset.final_score:.2f}").classes(
+                            "text-xs text-slate-400"
+                        )
+
+            if rp:
+                STATE.last_report_paths[7] = str(rp)
+                undo_input.value = str(rp)
+
+            progress_label.text = f"✓ Tamam {mode}"
+            run_btn.enable()
+            ui.notify(
+                f"Cherry-pick OK: {len(selection.selected)} asset {mode}",
+                type="positive",
+            )
+
+        def _do_undo():
+            rp = (undo_input.value or "").strip()
+            if not rp:
+                ui.notify("Rapor yolu gerekli", type="warning")
+                return
+            rep_path = Path(rp)
+            if not rep_path.is_file():
+                ui.notify(f"Rapor bulunamadı: {rep_path}", type="negative")
+                return
+            try:
+                removed, skipped = golden_undo_from_report(rep_path)
+            except ValueError as e:
+                ui.notify(f"Tool mismatch: {e}", type="negative")
+                return
+            except Exception as e:  # noqa: BLE001
+                ui.notify(f"Undo hatası: {e}", type="negative")
+                return
+            ui.notify(
+                f"Undo: removed={removed} skipped={skipped}",
+                type="positive",
+            )
+
+        run_btn.on("click", _do_run)
+        undo_btn.on("click", _do_undo)
+
+
 def build_stub_tab(idx: int, name: str, desc: str):
     with ui.column().classes(
         "w-full max-w-screen-md mx-auto p-12 gap-3 items-center justify-center min-h-96"
@@ -2566,6 +3806,10 @@ def main_page(tab: str = "overview"):
         1: build_validate_tab,
         2: build_duplicate_tab,
         3: build_quality_tab,
+        4: build_watermark_tab,
+        5: build_resize_tab,
+        6: build_caption_tab,
+        7: build_golden_set_tab,
     }
 
     with ui.tab_panels(tabs, value=initial).classes("w-full"):
