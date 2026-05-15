@@ -107,6 +107,8 @@ class PipelineState:
     """
     dataset_path: str = ""
     last_report_paths: dict[int, str] = field(default_factory=dict)
+    available_outputs: dict[int, str] = field(default_factory=dict)
+    _dismissed_outputs: set[int] = field(default_factory=set)
     _refresh_callbacks: list = field(default_factory=list)
 
     def is_valid_dataset(self) -> bool:
@@ -127,6 +129,50 @@ class PipelineState:
     def reset_callbacks(self) -> None:
         """Yeni page mount edildiğinde eski callback'leri temizle."""
         self._refresh_callbacks = []
+
+    def register_output(self, step_idx: int, output_dir: str) -> None:
+        """Output üreten adım (Organize copy/move, Resize copy, Golden-set) execute
+        sonrası çağırır. dataset_path değişmez; banner ile kullanıcıya 'switch'
+        teklif edilir. Aynı dizine register edilirse no-op."""
+        if not output_dir:
+            return
+        try:
+            norm = str(Path(output_dir).resolve())
+            cur = str(Path(self.dataset_path).resolve()) if self.dataset_path else ""
+        except OSError:
+            return
+        if norm == cur:
+            return
+        self.available_outputs[step_idx] = norm
+        self._dismissed_outputs.discard(step_idx)
+        self.notify_change()
+
+    def latest_output(self) -> Optional[tuple[int, str]]:
+        """En yeni (en yüksek step idx) dismiss edilmemiş output'u döndür."""
+        active = {k: v for k, v in self.available_outputs.items()
+                  if k not in self._dismissed_outputs}
+        if not active:
+            return None
+        idx = max(active)
+        return idx, active[idx]
+
+    def switch_to(self, output_dir: str) -> None:
+        """Banner'daki Switch butonu çağırır — dataset_path'i değiştirir."""
+        self.dataset_path = output_dir
+        self.notify_change()
+
+    def dismiss_output(self, step_idx: int) -> None:
+        """Banner'daki Dismiss butonu çağırır — output saklı kalır ama banner'da
+        gösterilmez (re-register'da otomatik geri gelir)."""
+        self._dismissed_outputs.add(step_idx)
+        self.notify_change()
+
+    def clear_output(self, step_idx: int) -> None:
+        """Undo başarılı olduğunda çağrılır — output artık geçersiz, banner'dan
+        tamamen temizle."""
+        self.available_outputs.pop(step_idx, None)
+        self._dismissed_outputs.discard(step_idx)
+        self.notify_change()
 
 
 STATE = PipelineState()
@@ -286,6 +332,38 @@ def _open_browse_dialog(target_input, *, title="Dizin seç", on_select=None):
     dialog.open()
 
 
+def _wire_latest_output_link(input_widget) -> None:
+    """Form input'un altına 'pipeline'daki son output'u kullan' butonu ekle.
+    Butona basılınca form input STATE.latest_output()[1]'e set edilir — global
+    STATE.dataset_path değişmez (form-local override). Görünürlüğü reaktif:
+    latest_output mevcutsa + form değerinden farklıysa görünür."""
+    def _use_latest(_=None):
+        latest = STATE.latest_output()
+        if latest:
+            input_widget.set_value(latest[1])
+            ui.notify(f"Form input → {latest[1]}", type="info")
+
+    btn = ui.button(
+        "⇡ Pipeline'daki son output'u kullan",
+        on_click=_use_latest,
+    ).props("flat dense color=primary no-caps").classes("text-xs")
+
+    def _refresh_visibility():
+        latest = STATE.latest_output()
+        if not latest:
+            btn.visible = False
+            return
+        try:
+            cur = str(Path(input_widget.value).resolve()) if input_widget.value else ""
+        except OSError:
+            cur = input_widget.value or ""
+        btn.visible = latest[1] != cur
+
+    _refresh_visibility()
+    STATE.on_change(_refresh_visibility)
+    input_widget.on_value_change(lambda _e: _refresh_visibility())
+
+
 def build_header():
     with ui.header().classes("items-center justify-between bg-slate-800 text-white"):
         ui.label("Media Dataset Prep").classes("text-xl font-semibold")
@@ -321,6 +399,52 @@ def build_header():
             ui.button("Validate", on_click=_validate).props(
                 "flat dense color=white no-caps"
             )
+
+    # Lazy banner: output üreten adımdan sonra "yeni klasöre geç" affordance'ı.
+    # Header'ın altına sticky bir row olarak iner.
+    banner_row = ui.row().classes(
+        "w-full bg-amber-100 px-4 py-2 items-center gap-3"
+    )
+
+    def refresh_banner() -> None:
+        banner_row.clear()
+        latest = STATE.latest_output()
+        if not latest:
+            banner_row.style("display:none")
+            return
+        idx, output_dir = latest
+        try:
+            cur_norm = str(Path(STATE.dataset_path).resolve()) if STATE.dataset_path else ""
+        except OSError:
+            cur_norm = STATE.dataset_path or ""
+        if output_dir == cur_norm:
+            banner_row.style("display:none")
+            return
+        banner_row.style("display:flex")
+        step_name = PIPELINE_STEPS[idx][1]
+        with banner_row:
+            ui.icon("swap_horiz").classes("text-amber-700")
+            ui.label(f"Step {idx:02d} {step_name} yeni output:").classes(
+                "text-sm font-medium text-amber-900"
+            )
+            ui.label(output_dir).classes("text-sm font-mono text-amber-800")
+
+            def _switch(_=None, target=output_dir):
+                STATE.switch_to(target)
+                ui.notify(f"Dataset → {target}", type="positive")
+
+            def _dismiss(_=None, step=idx):
+                STATE.dismiss_output(step)
+
+            ui.button("Switch", on_click=_switch).props(
+                "dense color=amber-9 no-caps"
+            ).classes("ml-auto")
+            ui.button("Dismiss", on_click=_dismiss).props(
+                "flat dense color=amber-9 no-caps"
+            )
+
+    refresh_banner()
+    STATE.on_change(refresh_banner)
 
 
 # ----------------------------- UI: Overview --------------------------------
@@ -603,7 +727,12 @@ def build_organize_tab():
                     + f"\nRapor: {report_path}"
                 )
                 ui.notify(f"{len(plan)} dosya işlendi", type="positive")
-                STATE.notify_change()  # Overview'da step 00 ✓ olur
+                # Copy/move modunda yeni output klasörü pipeline'a "alternatif dataset"
+                # olarak sunulur — banner üzerinden kullanıcı isterse switch eder.
+                if mode in ("copy", "move") and output_input.value:
+                    STATE.register_output(0, output_input.value)
+                else:
+                    STATE.notify_change()  # Overview'da step 00 ✓ olur
             except Exception as e:
                 ui.notify(f"Execute hatası: {e}", type="negative")
 
@@ -705,7 +834,8 @@ def build_organize_tab():
                     else:
                         summary_label.set_text(f"✓ Undo tamamlandı: {report}")
                         ui.notify("Undo başarılı", type="positive")
-                        STATE.notify_change()
+                        # Undo başarılı → organize output (varsa) artık geçersiz
+                        STATE.clear_output(0)
                 else:
                     ui.notify(
                         f"{label} kısmen tamamlandı (rc={rc})", type="warning"
@@ -2834,6 +2964,7 @@ def build_resize_tab():
                             input_dir_input, title="Source seç"
                         ),
                     ).props("flat dense color=grey-7").tooltip("Browse")
+                _wire_latest_output_link(input_dir_input)
 
                 mode_select = ui.select(
                     {
@@ -3001,6 +3132,10 @@ def build_resize_tab():
                 f"Resize: {sr.resized_count}/{sr.total_scanned} işlendi{mode_lbl}",
                 type="positive",
             )
+            # Copy modunda + gerçek run'da yeni klasör pipeline'a alternatif olarak
+            # sunulur. Dry-run'da gerçek dosya yok → register etme.
+            if mode == "copy" and out_dir and not dryrun_check.value:
+                STATE.register_output(5, out_dir)
 
         def _do_undo():
             rp = (undo_input.value or "").strip()
@@ -3016,6 +3151,8 @@ def build_resize_tab():
                 f"Undo: removed={summary['removed']} skipped={summary['skipped']}",
                 type="positive",
             )
+            # Undo başarılı → resize output artık geçersiz, banner'dan temizle
+            STATE.clear_output(5)
 
         run_btn.on("click", _do_run)
         undo_btn.on("click", _do_undo)
@@ -3068,6 +3205,7 @@ def build_caption_tab():
                             input_dir_input, title="Dataset klasörü seç"
                         ),
                     ).props("flat dense color=grey-7").tooltip("Browse")
+                _wire_latest_output_link(input_dir_input)
 
                 # Backend / connection
                 model_input = ui.input(
@@ -3472,6 +3610,7 @@ def build_golden_set_tab():
                             src_input, title="Source dataset seç"
                         ),
                     ).props("flat dense color=grey-7").tooltip("Browse")
+                _wire_latest_output_link(src_input)
 
                 with ui.row().classes("w-full items-center gap-1 no-wrap"):
                     out_input = ui.input(
@@ -3724,6 +3863,10 @@ def build_golden_set_tab():
                 f"Cherry-pick OK: {len(selection.selected)} asset {mode}",
                 type="positive",
             )
+            # Gerçek apply'da (dry-run değil) golden-set output pipeline'a
+            # alternatif olarak sunulur. Dry-run'da gerçek dosya yok → skip.
+            if not dryrun_check.value:
+                STATE.register_output(7, str(out_p))
 
         def _do_undo():
             rp = (undo_input.value or "").strip()
@@ -3746,6 +3889,8 @@ def build_golden_set_tab():
                 f"Undo: removed={removed} skipped={skipped}",
                 type="positive",
             )
+            # Undo başarılı → golden-set output artık geçersiz
+            STATE.clear_output(7)
 
         run_btn.on("click", _do_run)
         undo_btn.on("click", _do_undo)

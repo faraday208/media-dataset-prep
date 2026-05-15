@@ -198,3 +198,95 @@ def test_all_wired_builders_callable():
     for name in expected:
         fn = getattr(ui, name, None)
         assert callable(fn), f"{name} eksik veya callable değil"
+
+
+# ---------- PipelineState.available_outputs ----------
+
+def test_register_output_noop_when_same_as_dataset_path(tmp_path):
+    """Output dataset_path ile aynı → register edilmez (no-op)."""
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s.register_output(0, str(tmp_path))
+    assert s.available_outputs == {}
+
+
+def test_register_output_noop_on_empty_output(tmp_path):
+    """Boş string output → register edilmez."""
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s.register_output(0, "")
+    assert s.available_outputs == {}
+
+
+def test_register_output_normalizes_path(tmp_path):
+    """Output path resolve edilerek saklanır (relative/symlink fark eder)."""
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    out = tmp_path / "other_out"
+    out.mkdir()
+    s.register_output(0, str(out))
+    assert s.available_outputs[0] == str(out.resolve())
+
+
+def test_latest_output_returns_none_when_empty(tmp_path):
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    assert s.latest_output() is None
+
+
+def test_latest_output_picks_max_step_skipping_dismissed(tmp_path):
+    """En yüksek step idx kazanır; dismiss edilmiş atlanır."""
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    a = tmp_path / "a"
+    a.mkdir()
+    b = tmp_path / "b"
+    b.mkdir()
+    s.register_output(0, str(a))
+    s.register_output(5, str(b))
+    assert s.latest_output()[0] == 5
+    s.dismiss_output(5)
+    assert s.latest_output()[0] == 0
+    s.dismiss_output(0)
+    assert s.latest_output() is None
+
+
+def test_register_clears_dismiss_on_reregister(tmp_path):
+    """Dismiss edilmiş bir step yeniden register edilirse dismiss temizlenir."""
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    a = tmp_path / "a"
+    a.mkdir()
+    s.register_output(0, str(a))
+    s.dismiss_output(0)
+    assert s.latest_output() is None  # dismissed
+    b = tmp_path / "b"
+    b.mkdir()
+    s.register_output(0, str(b))
+    assert s.latest_output() == (0, str(b.resolve()))  # re-register clears dismiss
+
+
+def test_clear_output_removes_and_undismisses(tmp_path):
+    """clear_output() undo sonrası çağrılır — output + dismiss temizlenir."""
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    a = tmp_path / "a"
+    a.mkdir()
+    s.register_output(0, str(a))
+    s.dismiss_output(0)
+    s.clear_output(0)
+    assert s.available_outputs == {}
+    assert 0 not in s._dismissed_outputs
+
+
+def test_switch_to_changes_dataset_path_and_notifies(tmp_path):
+    """switch_to() banner Switch butonu için: dataset_path değişir, callback tetiklenir."""
+    import ui
+    s = ui.PipelineState(dataset_path=str(tmp_path))
+    new = tmp_path / "new_root"
+    new.mkdir()
+    calls = []
+    s.on_change(lambda: calls.append(1))
+    s.switch_to(str(new))
+    assert s.dataset_path == str(new)
+    assert calls, "on_change callback tetiklenmedi"

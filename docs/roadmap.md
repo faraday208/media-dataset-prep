@@ -77,6 +77,8 @@ dry-run preview + invalid table + undo butonu.
 - [x] **02 duplicate** UI wire-up — gallery + lightbox (carousel + zoom + BPP göstergesi)
 - [x] **NiceGUI image gallery** reusable pattern (02'de kuruldu, 03/06'da yeniden kullanılacak)
 - [ ] **State persistence** (JSON sidecar): UI session bilgisi diske yazılsın
+  > Not: `PipelineState.available_outputs` alanı v0.1.x'te eklendi (output handoff banner).
+  > Persistence PR'ında to_dict/from_dict ile diğer field'larla beraber serialize edilecek.
 - [x] **06 caption** wire-up — gallery + 5-pass JSON editor (short/medium/long edit + Save&Approve)
 - [x] **07 golden-set** wire-up — form + selection preview gallery + bucket dağılım
 - [x] **04 watermark** wire-up — form + invalid table + tree-preserving move
