@@ -332,38 +332,6 @@ def _open_browse_dialog(target_input, *, title="Dizin seç", on_select=None):
     dialog.open()
 
 
-def _wire_latest_output_link(input_widget) -> None:
-    """Form input'un altına 'pipeline'daki son output'u kullan' butonu ekle.
-    Butona basılınca form input STATE.latest_output()[1]'e set edilir — global
-    STATE.dataset_path değişmez (form-local override). Görünürlüğü reaktif:
-    latest_output mevcutsa + form değerinden farklıysa görünür."""
-    def _use_latest(_=None):
-        latest = STATE.latest_output()
-        if latest:
-            input_widget.set_value(latest[1])
-            ui.notify(f"Form input → {latest[1]}", type="info")
-
-    btn = ui.button(
-        "⇡ Pipeline'daki son output'u kullan",
-        on_click=_use_latest,
-    ).props("flat dense color=primary no-caps").classes("text-xs")
-
-    def _refresh_visibility():
-        latest = STATE.latest_output()
-        if not latest:
-            btn.visible = False
-            return
-        try:
-            cur = str(Path(input_widget.value).resolve()) if input_widget.value else ""
-        except OSError:
-            cur = input_widget.value or ""
-        btn.visible = latest[1] != cur
-
-    _refresh_visibility()
-    STATE.on_change(_refresh_visibility)
-    input_widget.on_value_change(lambda _e: _refresh_visibility())
-
-
 def build_header():
     with ui.header().classes("items-center justify-between bg-slate-800 text-white"):
         ui.label("Media Dataset Prep").classes("text-xl font-semibold")
@@ -2709,18 +2677,8 @@ def build_watermark_tab():
                 ui.label("Configuration").classes(
                     "text-sm uppercase text-slate-500 tracking-wide"
                 )
-
-                with ui.row().classes("w-full items-center gap-1 no-wrap"):
-                    input_dir_input = ui.input(
-                        "Dataset klasörü",
-                        value=STATE.dataset_path or "",
-                    ).props("dense outlined").classes("flex-grow")
-                    ui.button(
-                        icon="folder_open",
-                        on_click=lambda: _open_browse_dialog(
-                            input_dir_input, title="Dataset klasörü seç"
-                        ),
-                    ).props("flat dense color=grey-7").tooltip("Browse")
+                # Dataset path: header'dan implicit okunur (Step 01-04 paterni —
+                # destructive değil, tek truth source header).
 
                 recursive_check = ui.checkbox(
                     "Recursive — alt klasörler", value=True
@@ -2827,15 +2785,23 @@ def build_watermark_tab():
                     pagination=10,
                 ).classes("w-full mt-1")
 
+        def _on_action_change(value: str):
+            """Move seçilince invalid_dir'i <dataset>/rejected ile auto-doldur
+            (kullanıcı boş bıraktıysa). Validate tab'ındaki patern."""
+            if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
+                invalid_dir_input.value = str(Path(STATE.dataset_path) / "rejected")
+                invalid_dir_input.update()
+
+        action_select.on_value_change(lambda e: _on_action_change(e.value))
+
         def _do_run():
-            d = (input_dir_input.value or "").strip()
-            if not d:
-                ui.notify("Dataset klasörü gerekli", type="warning")
+            if not STATE.is_valid_dataset():
+                ui.notify(
+                    "Dataset yolu geçerli değil (header'da doğrula)",
+                    type="warning",
+                )
                 return
-            input_dir = Path(d)
-            if not input_dir.is_dir():
-                ui.notify(f"Geçerli dizin değil: {input_dir}", type="negative")
-                return
+            input_dir = Path(STATE.dataset_path)
 
             action = action_select.value
             invalid_dir = (invalid_dir_input.value or "").strip()
@@ -2971,19 +2937,7 @@ def build_resize_tab():
                 ui.label("Configuration").classes(
                     "text-sm uppercase text-slate-500 tracking-wide"
                 )
-
-                with ui.row().classes("w-full items-center gap-1 no-wrap"):
-                    input_dir_input = ui.input(
-                        "Source dataset",
-                        value=STATE.dataset_path or "",
-                    ).props("dense outlined").classes("flex-grow")
-                    ui.button(
-                        icon="folder_open",
-                        on_click=lambda: _open_browse_dialog(
-                            input_dir_input, title="Source seç"
-                        ),
-                    ).props("flat dense color=grey-7").tooltip("Browse")
-                _wire_latest_output_link(input_dir_input)
+                # Source dataset: header'dan implicit (tek truth source).
 
                 mode_select = ui.select(
                     {
@@ -3006,9 +2960,20 @@ def build_resize_tab():
                         ),
                     ).props("flat dense color=grey-7").tooltip("Browse")
 
+                def _suggest_out_dir(mode_val: str) -> None:
+                    """Copy seçilince ve out_input boşsa
+                    `{dataset_path}/resized` önerir."""
+                    if mode_val == "copy" and not out_input.value and STATE.dataset_path:
+                        out_input.set_value(
+                            os.path.join(STATE.dataset_path, "resized")
+                        )
+
                 def _toggle_out(val: str):
                     out_row.visible = (val == "copy")
+                    _suggest_out_dir(val)
                 mode_select.on_value_change(lambda e: _toggle_out(e.value))
+                # İlk render — default mode "copy" → ilk öneri
+                _suggest_out_dir(mode_select.value)
 
                 recursive_check = ui.checkbox("Recursive", value=True)
 
@@ -3078,14 +3043,13 @@ def build_resize_tab():
                         )
 
         def _do_run():
-            d = (input_dir_input.value or "").strip()
-            if not d:
-                ui.notify("Source gerekli", type="warning")
+            if not STATE.is_valid_dataset():
+                ui.notify(
+                    "Dataset yolu geçerli değil (header'da doğrula)",
+                    type="warning",
+                )
                 return
-            input_dir = Path(d)
-            if not input_dir.is_dir():
-                ui.notify(f"Geçerli dizin değil: {input_dir}", type="negative")
-                return
+            input_dir = Path(STATE.dataset_path)
 
             mode = mode_select.value
             out_dir = (out_input.value or "").strip()
@@ -3212,19 +3176,7 @@ def build_caption_tab():
                     "text-sm uppercase text-slate-500 tracking-wide"
                 )
 
-                with ui.row().classes("w-full items-center gap-1 no-wrap"):
-                    input_dir_input = ui.input(
-                        "Dataset klasörü",
-                        value=STATE.dataset_path or "",
-                        placeholder="/path/to/images",
-                    ).props("dense outlined").classes("flex-grow")
-                    ui.button(
-                        icon="folder_open",
-                        on_click=lambda: _open_browse_dialog(
-                            input_dir_input, title="Dataset klasörü seç"
-                        ),
-                    ).props("flat dense color=grey-7").tooltip("Browse")
-                _wire_latest_output_link(input_dir_input)
+                # Dataset path: header'dan implicit (tek truth source).
 
                 # Backend / connection
                 model_input = ui.input(
@@ -3319,11 +3271,9 @@ def build_caption_tab():
         # ============= Helpers =============
 
         def _input_dir() -> Optional[Path]:
-            v = (input_dir_input.value or "").strip()
-            if not v:
+            if not STATE.is_valid_dataset():
                 return None
-            p = Path(v)
-            return p if p.is_dir() else None
+            return Path(STATE.dataset_path)
 
         def _scan_caption_assets() -> list[tuple[Path, dict]]:
             """Input dir'da görsel + yan-yana caption JSON çiftlerini topla."""
@@ -3618,18 +3568,7 @@ def build_golden_set_tab():
                     "text-sm uppercase text-slate-500 tracking-wide"
                 )
 
-                with ui.row().classes("w-full items-center gap-1 no-wrap"):
-                    src_input = ui.input(
-                        "Source dataset",
-                        value=STATE.dataset_path or "",
-                    ).props("dense outlined").classes("flex-grow")
-                    ui.button(
-                        icon="folder_open",
-                        on_click=lambda: _open_browse_dialog(
-                            src_input, title="Source dataset seç"
-                        ),
-                    ).props("flat dense color=grey-7").tooltip("Browse")
-                _wire_latest_output_link(src_input)
+                # Source dataset: header'dan implicit (tek truth source).
 
                 with ui.row().classes("w-full items-center gap-1 no-wrap"):
                     out_input = ui.input(
@@ -3739,18 +3678,20 @@ def build_golden_set_tab():
         # ============= Action handlers =============
 
         def _do_run():
-            src = (src_input.value or "").strip()
+            if not STATE.is_valid_dataset():
+                ui.notify(
+                    "Dataset yolu geçerli değil (header'da doğrula)",
+                    type="warning",
+                )
+                return
             out = (out_input.value or "").strip()
             rep = (rep_input.value or "").strip()
-            if not src or not out or not rep:
-                ui.notify("Source, Output ve Report gerekli", type="warning")
+            if not out or not rep:
+                ui.notify("Output ve Report gerekli", type="warning")
                 return
-            src_p = Path(src)
+            src_p = Path(STATE.dataset_path)
             out_p = Path(out)
             rep_p = Path(rep)
-            if not src_p.is_dir():
-                ui.notify(f"Source dizin değil: {src_p}", type="negative")
-                return
             if not rep_p.is_file():
                 ui.notify(f"Quality rapor bulunamadı: {rep_p}", type="negative")
                 return
