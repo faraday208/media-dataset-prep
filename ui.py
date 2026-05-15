@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -575,11 +576,18 @@ def build_organize_tab():
                 # İlk render'da default mode'a göre öneri (default rename → no-op)
                 _suggest_output_dir(mode_select.value)
 
-                with ui.row().classes("gap-2 mt-2 w-full"):
+                with ui.row().classes("gap-2 mt-2 w-full items-center"):
                     preview_btn = ui.button("Dry-Run Preview").props(
                         "color=primary no-caps"
                     )
                     execute_btn = ui.button("Execute").props("color=positive no-caps")
+                    progress_label = ui.label("").classes(
+                        "text-xs text-slate-600"
+                    )
+                progress_bar = ui.linear_progress(
+                    value=0, show_value=False
+                ).classes("w-full")
+                progress_bar.visible = False
 
                 ui.separator().classes("my-3")
                 ui.label("Undo").classes(
@@ -699,14 +707,39 @@ def build_organize_tab():
             except Exception as e:
                 ui.notify(f"Hata: {e}", type="negative")
 
-        def _do_execute(plan):
-            """Asıl execute mantığı — conflict onayı sonrası burada toplanır."""
+        async def _do_execute(plan):
+            """Asıl execute mantığı — conflict onayı sonrası burada toplanır.
+
+            Blocking I/O (rename/copy/move + report yazımı) `asyncio.to_thread` ile
+            arka plana atılır; UI thread serbest kalır, WebSocket heartbeat kesilmez.
+            """
             mode = mode_select.value
+            execute_btn.disable()
+            preview_btn.disable()
+            progress_bar.set_value(0)
+            progress_bar.visible = True
+            progress_label.set_text("Hazırlanıyor…")
             try:
-                media_organizer.execute_rename(plan, dry_run=False, mode=mode)
+                def _cb(current: int, total: int, msg: str):
+                    if total > 0:
+                        progress_bar.set_value(current / total)
+                    progress_label.set_text(msg)
+
+                await asyncio.sleep(0)
+                await asyncio.to_thread(
+                    media_organizer.execute_rename,
+                    plan,
+                    dry_run=False,
+                    mode=mode,
+                    progress_cb=_cb,
+                )
+
                 report_dir = output_input.value or STATE.dataset_path
                 report_path = os.path.join(report_dir, "rename_report.json")
-                media_organizer.save_report(plan, report_path, mode=mode)
+                progress_label.set_text("Rapor yazılıyor…")
+                await asyncio.to_thread(
+                    media_organizer.save_report, plan, report_path, mode=mode
+                )
                 STATE.last_report_paths[0] = report_path
                 undo_input.set_value(report_path)
                 summary_label.set_text(
@@ -722,6 +755,11 @@ def build_organize_tab():
                     STATE.notify_change()  # Overview'da step 00 ✓ olur
             except Exception as e:
                 ui.notify(f"Execute hatası: {e}", type="negative")
+            finally:
+                progress_bar.visible = False
+                progress_label.set_text("")
+                execute_btn.enable()
+                preview_btn.enable()
 
         def _show_conflict_dialog(conflicts, on_confirm):
             """Çakışma listesini modal ile göster, kullanıcı onaylarsa devam et."""
@@ -759,7 +797,7 @@ def build_organize_tab():
                     )
             dlg.open()
 
-        def on_execute():
+        async def on_execute():
             err = _validate_inputs()
             if err:
                 ui.notify(err, type="negative")
@@ -787,9 +825,14 @@ def build_organize_tab():
                 # Conflict check — varsa modal, yoksa direkt execute
                 conflicts = media_organizer.check_conflicts(plan)
                 if conflicts:
-                    _show_conflict_dialog(conflicts, lambda: _do_execute(plan))
+                    # Dialog kapanınca _do_execute() coroutine'ini task'a sar:
+                    # dialog event handler async-context'i propagate etmez.
+                    _show_conflict_dialog(
+                        conflicts,
+                        lambda: asyncio.create_task(_do_execute(plan)),
+                    )
                 else:
-                    _do_execute(plan)
+                    await _do_execute(plan)
             except Exception as e:
                 ui.notify(f"Plan hatası: {e}", type="negative")
 
@@ -3238,6 +3281,13 @@ def build_caption_tab():
                     export_btn = ui.button("Sadece export").props(
                         "outline color=positive no-caps"
                     )
+                    cancel_btn = ui.button("Cancel").props(
+                        "outline color=negative no-caps"
+                    )
+                    cancel_btn.disable()
+                pass_progress_label = ui.label("").classes(
+                    "text-xs font-semibold text-slate-700"
+                )
                 progress_label = ui.label("").classes("text-xs text-slate-600")
                 progress_bar = ui.linear_progress(
                     value=0, show_value=False
@@ -3416,6 +3466,18 @@ def build_caption_tab():
             else:
                 ui.notify(f"⚠ Server cevap vermiyor: {srv}", type="negative")
 
+        def _format_eta(seconds: float) -> str:
+            if seconds <= 0 or seconds != seconds:  # NaN/0
+                return "—"
+            seconds = int(seconds)
+            h, rem = divmod(seconds, 3600)
+            m, s = divmod(rem, 60)
+            if h:
+                return f"{h}h {m}m"
+            if m:
+                return f"{m}m {s}s"
+            return f"{s}s"
+
         async def _do_run(*, export_only: bool):
             d = _input_dir()
             if not d:
@@ -3433,12 +3495,47 @@ def build_caption_tab():
             ps = pass_select.value
             pass_nums = [1, 2, 3, 4, 5] if ps == "all" else [int(ps)]
 
+            # Thread → UI bridge: callback worker thread'inden çağrılır,
+            # async poll loop her 0.5s'de okur. Element update'leri ana
+            # event loop tarafından yapılır → race yok.
+            progress_state: dict = {
+                "pass_idx": 0,
+                "total_passes": len(pass_nums) if not export_only else 0,
+                "current": 0,
+                "total": 0,
+                "msg": "Başlatılıyor…",
+                "success": 0,
+                "skipped": 0,
+                "failed": 0,
+            }
+
+            def _progress_cb(pi: int, tp: int, c: int, t_: int, m: str, stats: dict | None = None):
+                progress_state["pass_idx"] = pi
+                progress_state["total_passes"] = tp
+                progress_state["current"] = c
+                progress_state["total"] = t_
+                progress_state["msg"] = m
+                if stats:
+                    progress_state["success"] = stats.get("success", 0)
+                    progress_state["skipped"] = stats.get("skipped", 0)
+                    progress_state["failed"] = stats.get("failed", 0)
+
+            cancel_event = threading.Event()
+            tab_state["cancel"] = cancel_event
+
             run_btn.disable()
             export_btn.disable()
+            cancel_btn.enable()
             progress_bar.visible = True
-            progress_label.text = "Başlatılıyor..."
+            progress_bar.set_value(0)
+            pass_progress_label.text = ""
+            progress_label.text = "Başlatılıyor…"
+            start_time = time.time()
+            # İlk gerçek inference'ı yakaladığımız an. Skipped'ler hızlı atılır,
+            # rate hesabını ilk success'tan itibaren başlatırız ki başta 0/0 NaN
+            # ve sonra suni patlamalı eğri olmasın.
+            first_success_time: Optional[float] = None
 
-            # Long-running: background thread (NiceGUI'yi bloklamasın)
             error_holder: dict = {"err": None}
 
             def _worker():
@@ -3455,9 +3552,11 @@ def build_caption_tab():
                             overwrite=overwrite,
                             merge_only=merge_only,
                             backend="ollama",
+                            progress_cb=_progress_cb,
+                            cancel_event=cancel_event,
                         )
-                    # Export TXT
-                    caption_extract_captions(str(d), ctype, overwrite=False)
+                    if not cancel_event.is_set():
+                        caption_extract_captions(str(d), ctype, overwrite=False)
                 except Exception as e:  # noqa: BLE001
                     error_holder["err"] = str(e)
 
@@ -3465,32 +3564,100 @@ def build_caption_tab():
             tab_state["thread"] = t
             t.start()
 
-            # Periyodik progress refresh
+            # Periyodik UI refresh — element update ana event loop'ta
             while t.is_alive():
-                # input dir'da kaç JSON var
-                try:
-                    found = sum(1 for _ in d.glob("*.json"))
-                except OSError:
-                    found = 0
-                progress_label.text = f"Caption üretiliyor… ({found} JSON yazıldı)"
-                await asyncio.sleep(2)
+                pi = progress_state["pass_idx"]
+                tp = progress_state["total_passes"]
+                cur = progress_state["current"]
+                tot = progress_state["total"]
+                msg = progress_state["msg"]
+                succ = progress_state["success"]
+                skip = progress_state["skipped"]
+                fail = progress_state["failed"]
+
+                # Pass-aware overall progress: tüm pass'lar boyunca toplam iş
+                if tp > 0 and tot > 0 and pi > 0:
+                    total_work = tp * tot
+                    done_work = (pi - 1) * tot + cur
+                    progress_bar.set_value(done_work / total_work)
+
+                    # Rate hesabı sadece "gerçek inference" (success) üzerinden.
+                    # Skipped'ler milisaniyede dönüyor; bunları paya koyarsak rate
+                    # uçar, sonra çöker → kullanıcı için yanıltıcı ETA.
+                    if succ > 0:
+                        if first_success_time is None:
+                            first_success_time = time.time()
+                        # İlk success'a kadar geçen skipped süresini at: rate ilk
+                        # success'tan itibaren bizimle, daha kararlı.
+                        inference_elapsed = time.time() - first_success_time
+                        rate = succ / inference_elapsed if inference_elapsed > 0 else 0
+                    else:
+                        rate = 0
+
+                    # ETA: kalan işin tahmini gerçek inference kısmını rate'e böl.
+                    # Şu ana kadar gördüğümüz skipped oranını gelecek işe extrapolate
+                    # ediyoruz — overwrite=False ile sık görülen rerun senaryosunda
+                    # tutarlı tahmin verir.
+                    total_done = succ + skip + fail
+                    skipped_ratio = (skip / total_done) if total_done > 0 else 0
+                    remaining_total = total_work - done_work
+                    projected_real_remaining = remaining_total * (1 - skipped_ratio)
+                    eta = projected_real_remaining / rate if rate > 0 else 0
+
+                    rate_str = f"{rate:.2f} img/s" if rate > 0 else "—"
+                    skipped_str = f" • {skip} atlandı" if skip > 0 else ""
+                    pass_progress_label.text = (
+                        f"Pass {pi}/{tp} • {cur}/{tot} img{skipped_str} • "
+                        f"{rate_str} • ETA {_format_eta(eta)}"
+                    )
+                else:
+                    pass_progress_label.text = ""
+                progress_label.text = msg
+                if cancel_event.is_set():
+                    progress_label.text = msg + "  (iptal isteği gönderildi…)"
+                await asyncio.sleep(0.5)
 
             t.join()
 
             progress_bar.visible = False
+            cancel_btn.disable()
             run_btn.enable()
             export_btn.enable()
+
+            if cancel_event.is_set():
+                progress_label.text = "İptal edildi"
+                pass_progress_label.text = ""
+                ui.notify("Captioning iptal edildi", type="warning")
+                _refresh_gallery()
+                return
 
             if error_holder["err"]:
                 progress_label.text = f"Hata: {error_holder['err']}"
                 ui.notify(f"Captioning hatası: {error_holder['err']}", type="negative")
                 return
 
-            progress_label.text = "✓ Tamam"
+            elapsed_total = time.time() - start_time
+            progress_label.text = f"✓ Tamam — {_format_eta(elapsed_total)}"
+            pass_progress_label.text = ""
             # Rapor yolu otomatik undo'ya doldur
             STATE.last_report_paths[6] = str(d / "caption_report.json")
             undo_input.value = STATE.last_report_paths[6]
             ui.notify("Caption + export tamamlandı", type="positive")
+
+        def _do_cancel():
+            ev = tab_state.get("cancel")
+            if ev is None or not isinstance(ev, threading.Event):
+                ui.notify("Aktif iş yok", type="warning")
+                return
+            if ev.is_set():
+                ui.notify("İptal zaten gönderildi", type="info")
+                return
+            ev.set()
+            cancel_btn.disable()
+            ui.notify(
+                "İptal sinyali gönderildi — mevcut görseller bitince durur",
+                type="info",
+            )
             _refresh_gallery()
 
         def _do_undo():
@@ -3533,6 +3700,7 @@ def build_caption_tab():
         health_btn.on("click", _do_health_check)
         run_btn.on("click", lambda: _do_run(export_only=False))
         export_btn.on("click", lambda: _do_run(export_only=True))
+        cancel_btn.on("click", _do_cancel)
         refresh_btn.on("click", _refresh_gallery)
         undo_btn.on("click", _do_undo)
 
