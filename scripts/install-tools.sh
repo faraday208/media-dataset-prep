@@ -25,22 +25,22 @@ mkdir -p "$TOOLS_DIR"
 # Pipeline aşaması → (yerel klasör adı | GitHub URL) eşleşmesi
 declare -A LOCAL_PATHS=(
   ["00-organize"]="$LOCAL_BASE/media-organizer"
-  ["01-validate"]="$LOCAL_BASE/image-validator"
-  ["02-duplicate"]="$LOCAL_BASE/duplicate-image-finder"
-  ["03-quality"]="$LOCAL_BASE/image-quality-checker"
-  ["04-watermark"]="$LOCAL_BASE/watermark-detection"
-  ["05-resize"]="$LOCAL_BASE/image-resizer"
+  ["01-validate"]="$LOCAL_BASE/media-validator"
+  ["02-duplicate"]="$LOCAL_BASE/media-deduplicator"
+  ["03-quality"]="$LOCAL_BASE/media-quality-checker"
+  ["04-watermark"]="$LOCAL_BASE/media-watermark-detector"
+  ["05-resize"]="$LOCAL_BASE/media-resizer"
   ["06-caption"]="$LOCAL_BASE/media-captioner"
   ["07-golden-set"]="$LOCAL_BASE/media-golden-set"
 )
 
 declare -A GITHUB_URLS=(
   ["00-organize"]="https://github.com/faraday208/media-organizer.git"
-  ["01-validate"]="https://github.com/faraday208/image-validator.git"
-  ["02-duplicate"]="https://github.com/faraday208/duplicate-image-finder.git"
-  ["03-quality"]="https://github.com/faraday208/image-quality-checker.git"
-  ["04-watermark"]="https://github.com/faraday208/watermark-detection.git"
-  ["05-resize"]="https://github.com/faraday208/image-resizer.git"
+  ["01-validate"]="https://github.com/faraday208/media-validator.git"
+  ["02-duplicate"]="https://github.com/faraday208/media-deduplicator.git"
+  ["03-quality"]="https://github.com/faraday208/media-quality-checker.git"
+  ["04-watermark"]="https://github.com/faraday208/media-watermark-detector.git"
+  ["05-resize"]="https://github.com/faraday208/media-resizer.git"
   ["06-caption"]="https://github.com/faraday208/media-captioner.git"
   ["07-golden-set"]="https://github.com/faraday208/media-golden-set.git"
 )

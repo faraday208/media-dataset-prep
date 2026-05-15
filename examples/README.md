@@ -6,41 +6,56 @@ End-to-end demolar — sahte data ile pipeline'ın nasıl çalıştığını gö
 
 | Dosya / Klasör | Ne yapar |
 |---|---|
-| `sample-dataset/` | Telif sorunsuz örnek görseller (placeholder) |
-| `run-pipeline.sh` | Örnek end-to-end pipeline scripti |
+| `sample-dataset/` | Telif sorunsuz örnek görseller (fetch script çıktısı) |
+| `run-pipeline.sh` | CLI ile end-to-end pipeline şablonu (power-user / CI) |
 
-## Kullanım
+## Hızlı başlangıç
 
 ```bash
-# Önce kurulum (bir kez):
-make install         # tools/ altına 7 repo
-cp .env.example .env # .env'i düzenle
+# 1. Tek seferlik kurulum
+make install            # tools/ altına 8 repo
+cp .env.example .env    # .env'i düzenle (OLLAMA_HOST vb.)
 
-# Pipeline test:
-make test
-# veya:
+# 2. Örnek dataset üret (~30 sn)
+./scripts/fetch-sample-images.sh 100
+# → examples/sample-dataset/img_001.jpg … img_100.jpg
+
+# 3a. UI ile review (önerilen)
+uv sync --group ui
+uv run --group ui python ui.py        # http://localhost:8200
+# dataset path olarak: examples/sample-dataset/
+
+# 3b. veya CLI şablonu
 ./examples/run-pipeline.sh
 ```
 
 ## sample-dataset/
 
-Buraya **kendi örnek görsellerinizi** koyabilirsiniz. Pipeline'ı denemek için yeterli birkaç görsel:
-- 5-10 farklı format (jpg, png, webp)
-- Birkaç bilerek bozuk/duplicate (validate ve dedupe test için)
-- 1-2 filigranlı (watermark detection test için)
-- Farklı çözünürlük (resize test için)
+`scripts/fetch-sample-images.sh` ile **loremflickr.com**'dan indirilen
+CC lisanslı Flickr fotoğrafları (`portrait,woman` / `person,sitting` /
+`man,street` gibi 16 keyword × 6 farklı boyut). Pipeline test için ideal:
 
-**Telif notu:** Public repo olduğu için yalnızca telif sorunsuz görseller (CC0, kendi çekiminiz, public domain) kullanın.
+- Çeşitli içerik (kadınlı/erkekli, portre/full-body, sokak/cafe)
+- 6 farklı çözünürlük (resize testi için)
+- Bazı görseller blur'lu / düşük BPP (quality testi için)
+- 100 görsel → dedupe + caption pipeline'ı için yeterli
 
-## Geçiş Yolu
+**Telif notu:** Tüm görseller Flickr CC üzerinden gelir. Public repo'ya commit
+edilebilir, eğitim modeli için kullanılabilir (lisansa uygun atıfla).
 
-Tool repos açıldıkça `run-pipeline.sh` somut komutlarla güncellenir. Şu an placeholder:
+### Kendi datasetinizle
 
 ```bash
-./examples/run-pipeline.sh
-# Şu an output:
-# "Adım 1/7: media-validator
-#   cd tools/01-validate && python run.py ..."
+# fetch script yerine kendi klasörünüzü kullanın:
+uv run --group ui python ui.py
+# UI'da dataset path olarak kendi yolunuzu girin
 ```
 
-Tool yayına alındıkça komutlar gerçek hale gelecek.
+## run-pipeline.sh
+
+CLI tabanlı pipeline şablonu (UI gerektirmez — CI veya headless senaryolar için).
+Her tool'un `run.py` entry'sini sırayla çağırır, `*_report.json` sidecar'lara
+yazar. Detay için scripti inceleyin: [`run-pipeline.sh`](run-pipeline.sh).
+
+> İnteraktif review akışları (duplicate pair'leri, caption düzeltme,
+> golden-set cherry-pick) **UI'da** yapılır — CLI sadece otomatik adımlar için.
