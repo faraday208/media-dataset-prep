@@ -36,6 +36,9 @@ datasets/
 *.zip
 *.7z
 
+# Örnek dataset — scripts/fetch-sample-images.sh ile lokal üretilir, repo'da tutulmaz
+examples/sample-dataset/
+
 # Modeller (asla repo'da değil — /mnt/storage/Models/ altında)
 *.safetensors
 *.ckpt

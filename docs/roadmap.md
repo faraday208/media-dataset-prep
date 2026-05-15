@@ -7,7 +7,11 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 > uyar (CLI flag isimleri, sidecar JSON şeması, undo kontratı, README şablonu).
 > Yeni tool yazarken / refactor ederken §10 compliance checklist takip edilir.
 
-## Durum tablosu (2026-05-09)
+**Mevcut milestone:** v0.1 — 8/8 step UI'da wired, pipeline output handoff
+banner, sample dataset üretici. Sıradaki: v0.2 — state persistence, pipeline
+state machine, review akışlarında iyileştirme.
+
+## Durum tablosu (2026-05-16)
 
 | # | Tool | Tool sürümü | Conventions | Meta UI | Notlar |
 |---|---|---|---|---|---|
@@ -22,67 +26,71 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 
 ✓ = bitti  ·  ? = denetlenmedi  ·  stub = "coming soon" placeholder  ·  — = bu projede sürüm bilgisi tutulmuyor (tool repo'sundan oku)
 
-## Sıradaki iş — değer/maliyet sıralaması
+## Sıradaki iş
 
-UI'ın asıl varlık nedeni "AI etiketli veriyi insan onayından geçirmek".
-Tool'ların CLI'ları zaten control için yeter — UI **review işine** odaklanmalı.
-Bu mantığa göre öncelik:
+v0.1'de 8/8 step **wired**. Şimdi v0.2 hedefleri:
 
-### 1. **02 — Duplicate review** ⭐ (önerilen sıradaki adım)
-Pair-wise UI: yan yana iki görsel + "hangisi kalsın?" butonları. Bulk select.
-CLI ile yapılması zor olan tipik review işi. Tool zaten exact + similar
-hash'leri çıkarıyor; UI sadece kararı topluyor.
+### 1. **State persistence** ⭐ (önerilen sıradaki adım)
+Per-dataset JSON sidecar (`<dataset>/.media-prep-state.json`):
+- `dataset_path`, `last_report_paths`, `available_outputs`
+- UI mount edildiğinde dataset path girilince otomatik yüklensin
+- Browser refresh / restart kayıp olmasın
 
-**Wire-up gereksinimleri:**
-- 02 tool'unun output formatını oku (json'da hash gruplanmış pair'ler)
-- Gallery widget (NiceGUI `ui.image` + grid)
-- Karar log'u → state veya sidecar JSON
+**Açık karar:** Per-dataset (taşınabilir, multi-machine) vs global
+(`~/.config/media-dataset-prep/`, tek makine). Şu an birinciye yatkın.
 
-### 2. **06 — Caption review** ⭐
-Görsel + AI üretmiş caption (short/medium/long) yan yana. Kullanıcı
-edit + onay. Tool 5-pass JSON üretiyor; UI structured + caption
-tutarlılığını kullanıcıya gösterir.
+### 2. **Pipeline state machine** (disiplin opsiyonu)
+00 yapılmadıkça 01'i kilitle, 01 yapılmadıkça 02 kilitle vb. Şu an
+serbest navigasyon — bazı use-case'lerde (skip akışı) gerekli, bazılarında
+karışıklığa neden olur. Toggle'lanabilir "strict mode" düşünülebilir.
 
-### 3. **03 — Quality filter**
-Gallery view + metric slider'ları (blur < X, brightness > Y).
-Filter sonucunda kalan görseller. Manuel "drop / keep" toggle'ları.
+### 3. **Caption review akışı zenginleştir**
+- Pass-bazlı edit (sadece pass 5 değil, structured field düzenleme)
+- Toplu re-caption (seçili görseller için)
+- Caption vs görsel tutarsızlık flag'i (heuristic veya VL çapraz kontrol)
 
-### 4. **07 — Golden set**
-Final cherry-pick — büyük gallery + star/label. Tool tarafı v1.0.0'da
-hazır (CLI + library + sidecar JSON + undo); UI form-only olabilir
-(distribution slider + face-target + character + dry-run preview +
-seçim önizleme gallery'si).
+### 4. **Duplicate review batch action**
+- Multi-select + bulk "keep largest" / "keep first"
+- Karar log'u sidecar JSON'a yazılsın (re-run güvenli)
 
-### 5. **01 — Validate** (sıradaki adım — pipeline sırası)
-Tool tarafı v0.2.0'da hazır (move/delete + undo). UI'da form-only:
-threshold sliderları, action seçimi, dry-run preview, invalid table,
-undo butonu. ~2 saat. Pipeline disiplini gereği 02'den önce yapılır:
-bozuk/hatalı dosyalar dedupe'dan önce filtrelenmeli.
+### 5. **Quality filter — interaktif slider**
+Şu an form-based; slider'lar değişince live count önizlemesi (kaç dosya
+etkilenir, dry-run'sız).
 
-### 6. **05 — Resize** (düşük öncelik)
-Batch operation, review değeri düşük. UI'da: hedef çözünürlük seç +
-dry-run preview (kaç dosya etkilenecek). 00 organize gibi form-only.
+### 6. **Tool repo'larında pyproject sync**
+Workspace member'larının versiyonları meta `docs/roadmap.md`'deki sürüm
+pin listesiyle script ile karşılaştırılsın (CI yardımcısı).
 
-### 7. **04 — Watermark** (form-only)
-Tool v1.0.0 clean release; eski Gradio UI'sı silindi. Meta UI'da
-form-only: model dropdown + confidence slider + action seçimi +
-dry-run preview + invalid table + undo butonu.
-
-## v0.2 milestone'ları
+## v0.1 milestone'ları (tamamlandı — 2026-05-16)
 
 - [x] **Tool conventions doc** (`docs/tool-conventions.md`) — pattern formalizasyonu
-- [x] **01 validate** tool refactor (action layer, undo, threshold flag'ler, 43 test)
+- [x] **00 organize** UI wire-up + copy/move modunda output_dir otomatik öner
+- [x] **01 validate** tool refactor (action layer, undo, threshold flag'ler, 45 test)
 - [x] **01 validate** UI wire-up (form-only + progress + subdir + auto-suggest)
-- [x] **02 duplicate** clean refactor — `media-deduplicator` v1.2.0 (65 test, AI BPP eşikleri)
+- [x] **02 duplicate** clean refactor — `media-deduplicator` v1.2.x (65 test, AI BPP eşikleri)
 - [x] **02 duplicate** UI wire-up — gallery + lightbox (carousel + zoom + BPP göstergesi)
-- [x] **NiceGUI image gallery** reusable pattern (02'de kuruldu, 03/06'da yeniden kullanılacak)
-- [ ] **State persistence** (JSON sidecar): UI session bilgisi diske yazılsın
-  > Not: `PipelineState.available_outputs` alanı v0.1.x'te eklendi (output handoff banner).
-  > Persistence PR'ında to_dict/from_dict ile diğer field'larla beraber serialize edilecek.
-- [x] **06 caption** wire-up — gallery + 5-pass JSON editor (short/medium/long edit + Save&Approve)
-- [x] **07 golden-set** wire-up — form + selection preview gallery + bucket dağılım
+- [x] **03 quality** wire-up — rapor görüntüleyici + filter slider + action+undo
 - [x] **04 watermark** wire-up — form + invalid table + tree-preserving move
 - [x] **05 resize** wire-up — form + copy/in-place mode + dry-run + undo
+- [x] **06 caption** wire-up — gallery + 5-pass JSON editor (short/medium/long edit + Save&Approve)
+- [x] **07 golden-set** wire-up — form + selection preview gallery + bucket dağılım
+- [x] **Pipeline output handoff banner** (Step 00/05/07 → switch teklif)
+- [x] **NiceGUI image gallery** reusable pattern (02/06/07'de paylaşıldı)
+- [x] **Tüm tool isimleri rebrand** (`image-*` → `media-*`) — v1.0 clean release'ler
+- [x] **Tüm step'lerde dataset_path implicit STATE'ten** — header tek truth source
+- [x] **Sample dataset üretici** — `scripts/fetch-sample-images.sh` (loremflickr, 100 görsel)
+
+## v0.2 milestone'ları (planlama)
+
+- [ ] **State persistence** (JSON sidecar): UI session bilgisi diske yazılsın
+  > Not: `PipelineState.available_outputs` v0.1'de eklendi. Persistence PR'ında
+  > `to_dict`/`from_dict` ile `dataset_path` + `last_report_paths` +
+  > `available_outputs` birlikte serialize edilecek.
+- [ ] **Pipeline state machine** (opsiyonel strict mode)
+- [ ] **Caption review** — pass-bazlı edit + bulk re-caption
+- [ ] **Duplicate review** — batch action + karar log persistence
+- [ ] **Quality filter** — interaktif slider live count
+- [ ] **Workspace sürüm sync** — pyproject ↔ roadmap karşılaştırma scripti
 
 ## Açık tasarım soruları
 
