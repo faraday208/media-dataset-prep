@@ -569,6 +569,7 @@ def build_organize_tab():
                     else:
                         mode_select.options = MODE_OPTIONS_ALL
                     mode_select.update()
+                    _suggest_output_dir(mode_select.value)
 
                 recursive_select.on_value_change(
                     lambda e: _sync_mode_options(e.value)
@@ -587,6 +588,24 @@ def build_organize_tab():
                     ).props("flat dense color=grey-7").tooltip(
                         "Browse — output dizini seç"
                     )
+
+                def _suggest_output_dir(mode: str) -> None:
+                    """Copy/move seçildiğinde output_input boşsa
+                    `{dataset_path}/organized`'i önerir."""
+                    if (
+                        mode in ("copy", "move")
+                        and not output_input.value
+                        and STATE.dataset_path
+                    ):
+                        output_input.set_value(
+                            os.path.join(STATE.dataset_path, "organized")
+                        )
+
+                mode_select.on_value_change(
+                    lambda e: _suggest_output_dir(e.value)
+                )
+                # İlk render'da default mode'a göre öneri (default rename → no-op)
+                _suggest_output_dir(mode_select.value)
 
                 with ui.row().classes("gap-2 mt-2 w-full"):
                     preview_btn = ui.button("Dry-Run Preview").props(
