@@ -11,6 +11,7 @@ her adım kendi tool'unu in-process import eder ve sonuçları görselleştirir.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import time
@@ -106,14 +107,61 @@ class PipelineState:
     state-altering aksiyon `notify_change()` çağırır → kayıtlı tüm
     callback'ler tetiklenir (Observer pattern).
     """
-    dataset_path: str = ""
+    base_path: str = ""                     # kullanıcının işaret ettiği kök; header bunu gösterir
     last_report_paths: dict[int, str] = field(default_factory=dict)
+    last_stage_params: dict[int, dict] = field(default_factory=dict)
     available_outputs: dict[int, str] = field(default_factory=dict)
     _dismissed_outputs: set[int] = field(default_factory=set)
     _refresh_callbacks: list = field(default_factory=list)
 
+    def _resolve_active(self) -> Optional[str]:
+        """Manifest'ten aktif çalışma klasörünü (en son output_dir) çöz. SADECE
+        base_path okur (dataset_path'e DOKUNMAZ → recursion yok). Cache yok —
+        manifest küçük, erişim kullanıcı-olayı tetikli."""
+        base = self.base_path
+        if not base:
+            return None
+        mpath = None
+        for cand in (Path(base) / "report" / "_manifest.json",
+                     Path(base).parent / "report" / "_manifest.json"):
+            try:
+                if cand.is_file():
+                    mpath = cand
+                    break
+            except OSError:
+                pass
+        if mpath is None:
+            return None
+        try:
+            data = json.loads(mpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        runs = data.get("runs") if isinstance(data, dict) else None
+        active = None
+        if isinstance(runs, list):
+            for run in runs:
+                if isinstance(run, dict) and run.get("output_dir"):
+                    active = run["output_dir"]
+        try:
+            if active and not Path(active).is_dir():
+                active = None
+        except OSError:
+            active = None
+        return active
+
+    @property
+    def dataset_path(self) -> str:
+        """Tab'ların İŞLEDİĞİ aktif çalışma klasörü = manifest'in son output_dir'i,
+        yoksa kök (base_path). Header değil — header base_path gösterir (switch'siz)."""
+        return self._resolve_active() or self.base_path
+
+    @dataset_path.setter
+    def dataset_path(self, value) -> None:
+        # Geriye dönük uyum: dataset_path'e atama = kökü ayarla.
+        self.base_path = value or ""
+
     def is_valid_dataset(self) -> bool:
-        return bool(self.dataset_path) and Path(self.dataset_path).is_dir()
+        return bool(self.base_path) and Path(self.base_path).is_dir()
 
     def on_change(self, callback) -> None:
         """Bir tab'ı state değişikliği bildirimine abone et."""
@@ -177,6 +225,218 @@ class PipelineState:
 
 
 STATE = PipelineState()
+
+
+# ----------------------------- Safe UI helpers -----------------------------
+# Uzun süren background task sırasında tarayıcı tab'ı kapanır/yenilenirse
+# NiceGUI client objesi silinir; bağlı element update'leri RuntimeError fırlatır.
+# Bu helper'lar update'leri sessizce skip eder; iş arka planda tamamlanır
+# (raporlar yine de yazılır, sadece UI feedback verilemez).
+
+def _safe_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except RuntimeError:
+        return None
+
+
+def _safe_set_value(element, value):
+    return _safe_call(element.set_value, value)
+
+
+def _safe_set_text(element, text):
+    return _safe_call(element.set_text, text)
+
+
+def _safe_set_visible(element, visible: bool):
+    try:
+        element.visible = visible
+    except RuntimeError:
+        pass
+
+
+def _safe_enable(element):
+    return _safe_call(element.enable)
+
+
+def _safe_disable(element):
+    return _safe_call(element.disable)
+
+
+def _safe_notify(message: str, *, type: str = "info", timeout: int = 5000):
+    try:
+        ui.notify(message, type=type, timeout=timeout)
+    except RuntimeError:
+        pass
+
+
+# ----------------------------- Path helpers --------------------------------
+
+def _resolve_dataset_relative(value: Optional[str]) -> Optional[str]:
+    """Kullanıcı invalid_dir / rejected-dir gibi alanlara relative path girerse
+    Python'ın cwd'sini (media-dataset-prep) değil, **dataset_path**'i baz al.
+
+    - None / boş string  → None
+    - Absolute path      → olduğu gibi (str)
+    - Relative path      → STATE.dataset_path ile birleştir, resolve et
+    - dataset_path yoksa → cwd-resolve fallback (eski davranış)
+    """
+    if not value:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    p = Path(v)
+    if p.is_absolute():
+        return str(p)
+    if STATE.dataset_path:
+        return str((Path(STATE.dataset_path) / p).resolve())
+    return str(p.resolve())
+
+
+def _report_dir_for(base: Optional[str]) -> str:
+    """Tüm stage raporları için ortak 'report/' klasörü — çalışma klasörünün
+    KARDEŞİ (içine değil). Böylece raporlar görsellerle karışmaz ve recursive
+    scan onları yutmaz. base = output/dataset yolu → report = base.parent/'report'.
+    """
+    root = Path(base) if base else Path(STATE.dataset_path or ".")
+    rdir = root.resolve().parent / "report"
+    try:
+        rdir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return str(rdir)
+
+
+def _report_path(filename: str, base: Optional[str]) -> str:
+    """report/<filename> yolu. Yazımdan ÖNCE, varsa eski raporu report/_archive/'e
+    mtime timestamp'iyle taşır (A: overwrite yerine history korunur). Canonical isim
+    sabit kalır (undo + 03→07 kuplajı bozulmaz)."""
+    rdir = Path(_report_dir_for(base))
+    dest = rdir / filename
+    if dest.exists():
+        try:
+            adir = rdir / "_archive"
+            adir.mkdir(parents=True, exist_ok=True)
+            ts = time.strftime("%Y%m%d-%H%M%S", time.localtime(dest.stat().st_mtime))
+            archived = adir / f"{dest.stem}_{ts}{dest.suffix}"
+            n = 1
+            while archived.exists():
+                archived = adir / f"{dest.stem}_{ts}_{n}{dest.suffix}"
+                n += 1
+            dest.replace(archived)
+        except OSError:
+            pass
+    return str(dest)
+
+
+def _append_manifest_from_report(idx: int, report_path, output_dir=None, params=None) -> None:
+    """B: yazılmış raporu okuyup report/_manifest.json'a append-only lineage kaydı
+    ekler (dataset 'üretim reçetesi' — A/B yöntem kıyaslaması için provenance).
+    Stage'e özel değişken gerektirmez; rapor zaten tool/summary/config taşır.
+    Hata pipeline'ı asla bozmaz."""
+    try:
+        rp = Path(report_path)
+        try:
+            info = json.loads(rp.read_text(encoding="utf-8"))
+            if not isinstance(info, dict):
+                info = {}
+        except (OSError, ValueError):
+            info = {}
+        mpath = rp.parent / "_manifest.json"
+        data = {"version": 1, "runs": []}
+        if mpath.exists():
+            try:
+                loaded = json.loads(mpath.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict) and isinstance(loaded.get("runs"), list):
+                    data = loaded
+            except (OSError, ValueError):
+                pass
+        data["runs"].append({
+            "idx": idx,
+            "stage": info.get("tool", rp.stem),
+            "time": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+            "report": rp.name,
+            "output_dir": str(output_dir) if output_dir else None,
+            "params": params,
+            "summary": info.get("summary"),
+            "config": info.get("config"),
+            "source_root": info.get("source_root"),
+        })
+        mpath.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _reject_dir_for(stage: str) -> str:
+    """Reject klasörü çalışma klasörünün KARDEŞİ: <base>/_rejected/<stage> (içine
+    değil). report/ ile aynı disiplin — recursive scan reject'i geri yutmaz."""
+    root = Path(STATE.dataset_path) if STATE.dataset_path else Path(".")
+    return str(root.resolve().parent / "_rejected" / stage)
+
+
+def _find_manifest(path: Optional[str]):
+    """Verilen yolda VEYA bir üstünde report/_manifest.json ara (working folder ya da
+    proje kökü verilmiş olabilir)."""
+    if not path:
+        return None
+    p = Path(path)
+    for cand in (p / "report" / "_manifest.json",
+                 p.parent / "report" / "_manifest.json"):
+        try:
+            if cand.is_file():
+                return cand
+        except OSError:
+            pass
+    return None
+
+
+def _load_project_memory(path: Optional[str]) -> Optional[dict]:
+    """C: bir yol verilince report/_manifest.json'dan 'kaldığımız yer'i geri yükler:
+    Overview ✓ işaretlerini (last_report_paths) restore eder + özet döndürür. Aktif
+    klasörü/akışı OTOMATİK DEĞİŞTİRMEZ (manuel akış). None → hafıza yok."""
+    mpath = _find_manifest(path)
+    if not mpath:
+        return None
+    try:
+        data = json.loads(mpath.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    runs = data.get("runs") if isinstance(data, dict) else None
+    if not isinstance(runs, list) or not runs:
+        return None
+    rdir = mpath.parent
+    done = set()
+    active_folder = None
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        idx = run.get("idx")
+        rep = run.get("report")
+        if isinstance(idx, int) and isinstance(rep, str):
+            rp = rdir / rep
+            try:
+                if rp.is_file():
+                    STATE.last_report_paths[idx] = str(rp)
+                    done.add(idx)
+            except OSError:
+                pass
+        out = run.get("output_dir")
+        if out:
+            active_folder = out
+        prm = run.get("params")
+        if isinstance(idx, int) and isinstance(prm, dict):
+            STATE.last_stage_params[idx] = prm
+    last = runs[-1] if isinstance(runs[-1], dict) else {}
+    return {
+        "runs": len(runs),
+        "done": sorted(done),
+        "active_folder": active_folder,
+        "last_stage": last.get("stage"),
+        "last_time": last.get("time"),
+    }
 
 
 # Pipeline adımları — (idx, name, desc, wired)
@@ -341,12 +601,12 @@ def build_header():
             ui.label("Dataset:").classes("text-sm")
             path_input = ui.input(
                 placeholder="/path/to/dataset",
-                value=STATE.dataset_path,
-                on_change=lambda e: setattr(STATE, "dataset_path", e.value),
+                value=STATE.base_path,
+                on_change=lambda e: setattr(STATE, "base_path", e.value),
             ).props("dense outlined dark").classes("w-96")
 
             def _on_dataset_pick(chosen: str):
-                STATE.dataset_path = chosen
+                STATE.base_path = chosen
                 STATE.notify_change()  # Overview otomatik tazelenir
 
             ui.button(
@@ -361,6 +621,16 @@ def build_header():
             def _validate():
                 if STATE.is_valid_dataset():
                     ui.notify(f"Dataset OK: {STATE.dataset_path}", type="positive")
+                    mem = _load_project_memory(STATE.dataset_path)
+                    if mem:
+                        done = ",".join(f"{i:02d}" for i in mem["done"]) or "-"
+                        af = mem.get("active_folder")
+                        af_txt = f" · aktif: {af}" if af else ""
+                        ui.notify(
+                            f"📋 Hafıza yüklendi — son: {mem.get('last_stage')} "
+                            f"({mem.get('last_time')}) · biten: {done}{af_txt}",
+                            type="info",
+                        )
                     STATE.notify_change()  # Overview ve diğer abone tab'ları tazele
                 else:
                     ui.notify("Dizin yok veya geçersiz", type="negative")
@@ -424,6 +694,42 @@ def build_overview_tab():
             ui.label("Pipeline Overview").classes("text-2xl font-semibold")
             refresh_btn = ui.button("Refresh").props("flat color=primary no-caps")
 
+        # 🎯 Başlangıç rehberi — yalnızca geçerli dataset seçili DEĞİLken görünür
+        onboarding = ui.card().classes(
+            "w-full bg-sky-50 border border-sky-300"
+        )
+        with onboarding:
+            ui.label(
+                "🎯 Başla buradan — ilk ve en önemli adım: dataset seç"
+            ).classes("text-base font-semibold text-sky-900")
+            ui.label(
+                "1. Üstteki Dataset kutusuna işleyeceğin klasörün yolunu yaz "
+                "(📁 ile gözat) ve Validate'e bas.\n"
+                "2. İlk kez mi? Ham görsel klasörünü ver; sonra 00 Organize ile temiz "
+                "bir organized/ çalışma klasörü üret ve HEP onun üstünde ilerle "
+                "(ham/ana klasörde çalışma).\n"
+                "3. Devam mı? Proje klasörünü (ya da organized/) ver → report/ "
+                "hafızasından kaldığın yer otomatik yüklenir (Overview ✓ + özet)."
+            ).classes(
+                "text-sm text-sky-900 whitespace-pre-wrap mt-1 leading-relaxed"
+            )
+
+        # ⚠️ Çalışma klasörü disiplini — reject'in geri-yutulması tuzağı
+        with ui.card().classes("w-full bg-amber-50 border border-amber-300"):
+            ui.label("⚠️  Çalışma klasörü disiplini").classes(
+                "text-sm font-semibold text-amber-800"
+            )
+            ui.label(
+                "• Ham/ana klasörde ÇALIŞMA. Önce 00 Organize ile ayrı bir çalışma "
+                "klasörü üret (örn. organized/) ve hep onun üstünde ilerle.\n"
+                "• Reject/duplicates klasörünü çalışma klasörünün İÇİNE değil, DIŞINA "
+                "(kardeş klasöre) ver — örn. ../_rejected/02-dup. Recursive default "
+                "AÇIK olduğu için içeride kalan reject'i bir sonraki scan GERİ YUTAR.\n"
+                "• Her stage'den sonra amber \"Switch\" bandıyla yeni çıktıya geç."
+            ).classes(
+                "text-sm text-amber-900 whitespace-pre-wrap mt-1 leading-relaxed"
+            )
+
         # Stats kartları — solda dataset özeti, sağda ext breakdown
         with ui.grid(columns="2fr 1fr").classes("w-full gap-4"):
             with ui.card().classes("w-full"):
@@ -440,14 +746,20 @@ def build_overview_tab():
             steps_grid = ui.column().classes("gap-2 mt-2")
 
         def refresh():
+            valid = STATE.is_valid_dataset()
+            onboarding.set_visibility(not valid)
             stats = scan_dataset_stats(STATE.dataset_path)
-            if not STATE.is_valid_dataset():
-                stats_label.set_text("⚠ Önce header'da geçerli bir\ndataset yolu seçin.")
-                ext_label.set_text("(yol seçilmedi)")
+            if not valid:
+                stats_label.set_text("(henüz seçilmedi — yukarıdaki rehberi izle)")
+                ext_label.set_text("—")
             else:
+                base = STATE.base_path
+                active = STATE.dataset_path
+                aktif_line = f"Aktif    : {active}  (manifest)\n" if active != base else ""
                 stats_label.set_text(
-                    f"Yol      : {STATE.dataset_path}\n"
-                    f"Toplam   : {stats['total']} medya dosyası\n"
+                    f"Proje    : {base}\n"
+                    f"{aktif_line}"
+                    f"Toplam   : {stats['total']} medya dosyası (aktif klasör)\n"
                     f"Boyut    : {humanize_bytes(stats['size_bytes'])}\n"
                     f"Alt dizin: {stats['subdirs']}"
                 )
@@ -496,6 +808,14 @@ def build_organize_tab():
                     placeholder="(boş = dataset klasör adı)",
                 ).props("dense outlined").classes("w-full")
 
+                def _restore_prefix_from_memory():
+                    """Resume: hafızadaki son organize prefix'ini doldur (alan boşsa)."""
+                    p = (STATE.last_stage_params.get(0) or {}).get("prefix")
+                    if p and not prefix_input.value:
+                        prefix_input.set_value(p)
+                STATE.on_change(_restore_prefix_from_memory)
+                _restore_prefix_from_memory()
+
                 recursive_select = ui.select(
                     {"none": "Off — sadece üst seviye",
                      "flat": "Flat — tüm tree, tek sequence",
@@ -537,6 +857,19 @@ def build_organize_tab():
                             )
                     else:
                         mode_select.options = MODE_OPTIONS_ALL
+                        # Off: "tek klasörde topla" akışı için boş output'ta Copy'ye
+                        # geçip 'organized' öner (flat ile tutarlı UX). In-place hâlâ
+                        # elle seçilebilir.
+                        if (
+                            recursive_value == "none"
+                            and mode_select.value == "rename"
+                            and not output_input.value
+                        ):
+                            mode_select.value = "copy"
+                            ui.notify(
+                                "Off + Copy → 'organized' klasörüne toplanır",
+                                type="info",
+                            )
                     mode_select.update()
                     _suggest_output_dir(mode_select.value)
 
@@ -597,6 +930,16 @@ def build_organize_tab():
                     "rename_report.json yolu",
                     placeholder="(execute sonrası otomatik dolar)",
                 ).props("dense outlined").classes("w-full")
+
+                def _restore_undo_from_memory():
+                    """Resume: hafızadaki rename_report.json yolunu undo alanına doldur
+                    (alan boşsa). Rapor diskte + manifest'te kayıtlı."""
+                    rp = STATE.last_report_paths.get(0)
+                    if rp and not undo_input.value:
+                        undo_input.set_value(rp)
+                STATE.on_change(_restore_undo_from_memory)
+                _restore_undo_from_memory()
+
                 cleanup_check = ui.checkbox("Cleanup empty dirs", value=False)
                 with ui.row().classes("gap-2"):
                     undo_preview_btn = ui.button("Preview Undo").props(
@@ -615,6 +958,41 @@ def build_organize_tab():
                 summary_label = ui.label(
                     "Henüz preview üretilmedi — sol panelde Dry-Run Preview tıkla."
                 ).classes("text-sm text-slate-600 italic mt-1")
+
+                def _restore_preview_from_memory():
+                    """Resume: organize zaten yapılmışsa preview alanına '✓ tamamlandı'
+                    özeti bas (yanıltıcı boş-durum yerine). Tam tablo otomatik gelmez."""
+                    rp = STATE.last_report_paths.get(0)
+                    if not rp:
+                        return
+                    cur = summary_label.text or ""
+                    # Gerçek Dry-Run sonucunu EZME — sadece default boş-durumu / kendi özetimizi güncelle
+                    if "Henüz preview" not in cur and not cur.startswith("✓ Organize"):
+                        return
+                    count = None
+                    try:
+                        data = json.loads(Path(rp).read_text(encoding="utf-8"))
+                        count = data.get("total_files")
+                        if count is None and isinstance(data.get("renames"), list):
+                            count = len(data["renames"])
+                    except (OSError, ValueError):
+                        pass
+                    prm = STATE.last_stage_params.get(0) or {}
+                    parts = []
+                    if count is not None:
+                        parts.append(f"{count} dosya")
+                    if prm.get("prefix"):
+                        parts.append(f"prefix={prm['prefix']}")
+                    if prm.get("mode"):
+                        parts.append(f"mode={prm['mode']}")
+                    detail = " · ".join(parts) if parts else "kayıt mevcut"
+                    summary_label.set_text(
+                        f"✓ Organize tamamlandı — {detail}\n"
+                        "(detay tablo için Dry-Run'a basabilirsin)"
+                    )
+                STATE.on_change(_restore_preview_from_memory)
+                _restore_preview_from_memory()
+
                 preview_table = ui.table(
                     columns=[
                         {"name": "ext", "label": "Ext", "field": "ext", "align": "left"},
@@ -694,18 +1072,24 @@ def build_organize_tab():
                    f"Preview: {len(plan)} dosya planlandı (henüz uygulanmadı)"
             return f"{verb}\nSort-time: {src_breakdown}"
 
-        def on_preview():
+        async def on_preview():
             err = _validate_inputs()
             if err:
                 ui.notify(err, type="negative")
                 return
+            # Büyük dizinlerde scan_directory + generate_*_plan main thread'i
+            # blok edip WebSocket heartbeat'i öldürüyordu — thread'e at.
+            preview_btn.disable()
             try:
-                plan = _build_plan()
+                _safe_set_text(summary_label, "Plan oluşturuluyor…")
+                plan = await asyncio.to_thread(_build_plan)
                 _populate_preview(plan)
-                summary_label.set_text(_summarize_plan(plan, executed=False))
-                ui.notify(f"{len(plan)} dosya için plan oluşturuldu", type="info")
+                _safe_set_text(summary_label, _summarize_plan(plan, executed=False))
+                _safe_notify(f"{len(plan)} dosya için plan oluşturuldu", type="info")
             except Exception as e:
-                ui.notify(f"Hata: {e}", type="negative")
+                _safe_notify(f"Hata: {e}", type="negative")
+            finally:
+                _safe_enable(preview_btn)
 
         async def _do_execute(plan):
             """Asıl execute mantığı — conflict onayı sonrası burada toplanır.
@@ -714,16 +1098,19 @@ def build_organize_tab():
             arka plana atılır; UI thread serbest kalır, WebSocket heartbeat kesilmez.
             """
             mode = mode_select.value
-            execute_btn.disable()
-            preview_btn.disable()
-            progress_bar.set_value(0)
-            progress_bar.visible = True
-            progress_label.set_text("Hazırlanıyor…")
+            _safe_disable(execute_btn)
+            _safe_disable(preview_btn)
+            _safe_set_value(progress_bar, 0)
+            _safe_set_visible(progress_bar, True)
+            _safe_set_text(progress_label, "Hazırlanıyor…")
             try:
                 def _cb(current: int, total: int, msg: str):
+                    # Worker thread → UI: NiceGUI element update'leri thread-safe
+                    # değil ama set_value/set_text basit attribute set'i; kritik
+                    # senaryolarda zaten _safe wrapper RuntimeError'u yutuyor.
                     if total > 0:
-                        progress_bar.set_value(current / total)
-                    progress_label.set_text(msg)
+                        _safe_set_value(progress_bar, current / total)
+                    _safe_set_text(progress_label, msg)
 
                 await asyncio.sleep(0)
                 await asyncio.to_thread(
@@ -734,19 +1121,25 @@ def build_organize_tab():
                     progress_cb=_cb,
                 )
 
-                report_dir = output_input.value or STATE.dataset_path
-                report_path = os.path.join(report_dir, "rename_report.json")
-                progress_label.set_text("Rapor yazılıyor…")
+                report_path = _report_path("rename_report.json", output_input.value or STATE.dataset_path)
+                _safe_set_text(progress_label, "Rapor yazılıyor…")
                 await asyncio.to_thread(
                     media_organizer.save_report, plan, report_path, mode=mode
                 )
                 STATE.last_report_paths[0] = report_path
-                undo_input.set_value(report_path)
-                summary_label.set_text(
-                    _summarize_plan(plan, executed=True, mode=mode)
-                    + f"\nRapor: {report_path}"
+                _append_manifest_from_report(
+                    0, report_path,
+                    output_dir=output_input.value or STATE.dataset_path,
+                    params={"prefix": prefix_input.value,
+                            "recursive": recursive_select.value, "mode": mode},
                 )
-                ui.notify(f"{len(plan)} dosya işlendi", type="positive")
+                _safe_set_value(undo_input, report_path)
+                _safe_set_text(
+                    summary_label,
+                    _summarize_plan(plan, executed=True, mode=mode)
+                    + f"\nRapor: {report_path}",
+                )
+                _safe_notify(f"{len(plan)} dosya işlendi", type="positive")
                 # Copy/move modunda yeni output klasörü pipeline'a "alternatif dataset"
                 # olarak sunulur — banner üzerinden kullanıcı isterse switch eder.
                 if mode in ("copy", "move") and output_input.value:
@@ -754,12 +1147,12 @@ def build_organize_tab():
                 else:
                     STATE.notify_change()  # Overview'da step 00 ✓ olur
             except Exception as e:
-                ui.notify(f"Execute hatası: {e}", type="negative")
+                _safe_notify(f"Execute hatası: {e}", type="negative")
             finally:
-                progress_bar.visible = False
-                progress_label.set_text("")
-                execute_btn.enable()
-                preview_btn.enable()
+                _safe_set_visible(progress_bar, False)
+                _safe_set_text(progress_label, "")
+                _safe_enable(execute_btn)
+                _safe_enable(preview_btn)
 
         def _show_conflict_dialog(conflicts, on_confirm):
             """Çakışma listesini modal ile göster, kullanıcı onaylarsa devam et."""
@@ -919,7 +1312,7 @@ def build_validate_tab():
                 with ui.row().classes("w-full items-center gap-1 no-wrap"):
                     invalid_dir_input = ui.input(
                         "Invalid dir",
-                        placeholder="move için zorunlu (örn. ./rejected)",
+                        placeholder="move için zorunlu — çalışma klasörü DIŞINA ver (örn. ../_rejected/01-validate)",
                     ).props("dense outlined").classes("flex-grow")
                     ui.button(
                         icon="folder_open",
@@ -1084,10 +1477,10 @@ def build_validate_tab():
                 return "—"
 
         def _on_action_change(value: str):
-            """Move seçilince invalid_dir input'u <dataset>/rejected ile auto-doldur
-            (kullanıcı boş bıraktıysa)."""
+            """Move seçilince invalid_dir input'u <base>/_rejected/<stage> (KARDEŞ) ile
+            auto-doldur (kullanıcı boş bıraktıysa)."""
             if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
-                invalid_dir_input.value = str(Path(STATE.dataset_path) / "rejected")
+                invalid_dir_input.value = _reject_dir_for("01-validate")
                 invalid_dir_input.update()
 
         action_select.on_value_change(lambda e: _on_action_change(e.value))
@@ -1146,7 +1539,7 @@ def build_validate_tab():
             çok sıkı. (CLI'de tqdm sonrası reason listesi zaten gösterir;
             UI'da explicit warning daha keşfedilebilir.)"""
             if summary["total"] > 0 and summary["invalid"] == summary["total"]:
-                ui.notify(
+                _safe_notify(
                     "⚠ %100 reddedildi — threshold'larınız çok sıkı olabilir. "
                     "Threshold ayarlarını gevşetmeyi deneyin.",
                     type="warning",
@@ -1154,51 +1547,74 @@ def build_validate_tab():
                 )
 
         async def on_run():
+            import threading
+
             err = _validate_inputs()
             if err:
                 ui.notify(err, type="negative")
                 return
 
-            run_btn.disable()
-            progress_bar.visible = True
-            progress_bar.set_value(0)
+            _safe_disable(run_btn)
+            _safe_set_visible(progress_bar, True)
+            _safe_set_value(progress_bar, 0)
             try:
                 config = _build_config()
                 validator = FileValidator(config)
                 exts = {f".{f}" for f in config["file_validation"]["allowed_formats"]}
                 exts |= {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
-                progress_label.set_text("Tarama…")
-                await asyncio.sleep(0)
-                images = validate_collect_images(
+                _safe_set_text(progress_label, "Tarama…")
+                # Büyük dizinde collect_images de bloklayıcı — thread'e at.
+                images = await asyncio.to_thread(
+                    validate_collect_images,
                     STATE.dataset_path,
                     recursive=recursive_check.value,
                     allowed_exts=exts,
                 )
                 if not images:
-                    ui.notify("Hiç dosya bulunamadı", type="warning")
+                    _safe_notify("Hiç dosya bulunamadı", type="warning")
                     return
 
-                # Validate — chunk'lar halinde, her N dosyada bir UI'ı yenile
                 total = len(images)
                 results: list[dict] = []
-                valid = invalid = 0
-                reasons: dict[str, int] = {}
-                update_every = max(1, total // 100)
-                progress_label.set_text(f"0 / {total}")
+                # Worker thread sayaçları paylaşır; main coroutine poll edip
+                # UI'ı günceller. Bu sayede event loop bloklamaz, WebSocket
+                # heartbeat sürekli akar.
+                shared = {"i": 0, "valid": 0, "invalid": 0, "reasons": {}}
+                lock = threading.Lock()
 
-                for i, img in enumerate(images):
-                    r = validator.validate(img)
-                    results.append(r.to_dict())
-                    if r.valid:
-                        valid += 1
-                    else:
-                        invalid += 1
-                        reasons[r.reason] = reasons.get(r.reason, 0) + 1
-                    if (i + 1) % update_every == 0 or (i + 1) == total:
-                        progress_bar.set_value((i + 1) / total)
-                        progress_label.set_text(f"{i + 1} / {total}")
-                        await asyncio.sleep(0)
+                def _worker():
+                    for i, img in enumerate(images):
+                        r = validator.validate(img)
+                        d = r.to_dict()
+                        with lock:
+                            results.append(d)
+                            if r.valid:
+                                shared["valid"] += 1
+                            else:
+                                shared["invalid"] += 1
+                                shared["reasons"][r.reason] = (
+                                    shared["reasons"].get(r.reason, 0) + 1
+                                )
+                            shared["i"] = i + 1
+
+                _safe_set_text(progress_label, f"0 / {total}")
+                worker_task = asyncio.create_task(asyncio.to_thread(_worker))
+                while not worker_task.done():
+                    with lock:
+                        i = shared["i"]
+                    _safe_set_value(progress_bar, i / total if total else 0)
+                    _safe_set_text(progress_label, f"{i} / {total}")
+                    await asyncio.sleep(0.25)
+                # Worker bittikten sonra exception varsa fırlat
+                await worker_task
+
+                with lock:
+                    valid = shared["valid"]
+                    invalid = shared["invalid"]
+                    reasons = dict(shared["reasons"])
+                _safe_set_value(progress_bar, 1.0)
+                _safe_set_text(progress_label, f"{total} / {total}")
 
                 summary = {
                     "total": total,
@@ -1222,25 +1638,32 @@ def build_validate_tab():
                     _maybe_warn_full_rejection(summary)
                     return
 
-                # action="none": sadece rapor
-                report_path = Path(STATE.dataset_path) / VALIDATE_REPORT_NAME
-                _write_report_helper(
+                # action="none": sadece rapor — yine bloklayıcı olabilir,
+                # write_report dosyaya JSON dump'ı thread'de yapılsın.
+                report_path = Path(_report_path(VALIDATE_REPORT_NAME, STATE.dataset_path))
+                action_res = await asyncio.to_thread(
+                    validate_apply_action,
+                    results,
+                    source_root=STATE.dataset_path,
+                    action="none",
+                )
+                await asyncio.to_thread(
+                    _write_report_helper,
                     report_path,
                     summary=summary,
                     results=results,
-                    action_result=validate_apply_action(
-                        results, source_root=STATE.dataset_path, action="none"
-                    ),
+                    action_result=action_res,
                     config=config,
                     exts=exts,
                 )
-                undo_input.set_value(str(report_path))
+                _safe_set_value(undo_input, str(report_path))
                 STATE.last_report_paths[1] = str(report_path)
-                _populate_results(
+                _safe_call(
+                    _populate_results,
                     results, summary,
                     action_msg=f"Rapor: {report_path}",
                 )
-                ui.notify(
+                _safe_notify(
                     f"{invalid}/{total} hatalı (sadece raporlandı)",
                     type="info",
                 )
@@ -1248,11 +1671,11 @@ def build_validate_tab():
                 STATE.notify_change()
 
             except Exception as e:
-                ui.notify(f"Validate hatası: {e}", type="negative")
+                _safe_notify(f"Validate hatası: {e}", type="negative")
             finally:
-                progress_bar.visible = False
-                progress_label.set_text("")
-                run_btn.enable()
+                _safe_set_visible(progress_bar, False)
+                _safe_set_text(progress_label, "")
+                _safe_enable(run_btn)
 
         def _confirm_delete_dialog(invalid_count: int, *, on_confirm):
             with ui.dialog() as dlg, ui.card().classes("w-[500px]"):
@@ -1277,18 +1700,18 @@ def build_validate_tab():
 
         def _execute_action(action: str, results: list[dict], summary: dict, exts: set):
             try:
+                # Relative path (örn. "./", "rejected") dataset bazlı çözülür;
+                # absolute olduğu gibi geçer. cwd (media-dataset-prep) baz alınmaz.
+                resolved_invalid_dir = _resolve_dataset_relative(invalid_dir_input.value)
                 action_res = validate_apply_action(
                     results,
                     source_root=STATE.dataset_path,
                     action=action,
-                    invalid_dir=invalid_dir_input.value or None,
+                    invalid_dir=resolved_invalid_dir,
                     dry_run=dryrun_check.value,
                 )
                 # Rapor
-                if action == "move" and invalid_dir_input.value:
-                    report_path = Path(invalid_dir_input.value) / VALIDATE_REPORT_NAME
-                else:
-                    report_path = Path(STATE.dataset_path) / VALIDATE_REPORT_NAME
+                report_path = Path(_report_path(VALIDATE_REPORT_NAME, STATE.dataset_path))
                 _write_report_helper(
                     report_path,
                     summary=summary,
@@ -1297,22 +1720,25 @@ def build_validate_tab():
                     config=_build_config(),
                     exts=exts,
                 )
-                undo_input.set_value(str(report_path))
+                _safe_set_value(undo_input, str(report_path))
                 STATE.last_report_paths[1] = str(report_path)
+                if not dryrun_check.value:
+                    _append_manifest_from_report(1, report_path)
 
                 dryrun_tag = " (DRY-RUN)" if dryrun_check.value else ""
                 if action == "move":
                     msg = f"Taşınan: {len(action_res.entries)}{dryrun_tag} → {action_res.invalid_dir}"
                 else:
                     msg = f"Silinen: {len(action_res.entries)}{dryrun_tag}"
-                _populate_results(
+                _safe_call(
+                    _populate_results,
                     results, summary,
                     action_msg=f"{msg}\nRapor: {report_path}",
                 )
-                ui.notify(msg, type="positive" if not dryrun_check.value else "info")
+                _safe_notify(msg, type="positive" if not dryrun_check.value else "info")
                 STATE.notify_change()
             except Exception as e:
-                ui.notify(f"Aksiyon hatası: {e}", type="negative")
+                _safe_notify(f"Aksiyon hatası: {e}", type="negative")
 
         def _write_report_helper(report_path, *, summary, results, action_result,
                                   config, exts):
@@ -1529,7 +1955,7 @@ def build_duplicate_tab():
                 with ui.row().classes("w-full items-center gap-1 no-wrap"):
                     invalid_dir_input = ui.input(
                         "Invalid dir",
-                        placeholder="move için zorunlu",
+                        placeholder="move için zorunlu — çalışma klasörü DIŞINA ver (örn. ../_rejected)",
                     ).props("dense outlined").classes("flex-grow")
                     ui.button(
                         icon="folder_open",
@@ -1643,7 +2069,7 @@ def build_duplicate_tab():
 
         def _on_action_change(value: str):
             if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
-                invalid_dir_input.value = str(Path(STATE.dataset_path) / "duplicates_rejected")
+                invalid_dir_input.value = _reject_dir_for("02-duplicate")
                 invalid_dir_input.update()
         action_select.on_value_change(lambda e: _on_action_change(e.value))
 
@@ -2062,35 +2488,40 @@ def build_duplicate_tab():
         async def on_scan():
             err = _validate_inputs()
             if err:
-                ui.notify(err, type="negative")
+                _safe_notify(err, type="negative")
                 return
 
             cfg = _build_config()
             if cfg["mode"] == "similar" and not DupHasher.is_perceptual_hash_available():
-                ui.notify("imagehash kütüphanesi yüklü değil", type="negative")
+                _safe_notify("imagehash kütüphanesi yüklü değil", type="negative")
                 return
 
-            scan_btn.disable()
-            apply_btn.disable()
-            progress_bar.visible = True
-            progress_bar.set_value(0)
-            progress_label.set_text("Tarama…")
+            _safe_disable(scan_btn)
+            _safe_disable(apply_btn)
+            _safe_set_visible(progress_bar, True)
+            _safe_set_value(progress_bar, 0)
+            _safe_set_text(progress_label, "Tarama…")
 
+            # Progress callback worker thread'den çağrılır; safe-helper'lar
+            # client öldüyse RuntimeError'u yutar.
             def _cb(current: int, total: int, msg: str):
                 if total > 0:
-                    progress_bar.set_value(current / total)
-                progress_label.set_text(msg)
+                    _safe_set_value(progress_bar, current / total)
+                _safe_set_text(progress_label, msg)
 
             try:
-                await asyncio.sleep(0)
+                # Hash hesaplama + grouping uzun süren CPU işidir — thread'e at,
+                # event loop serbest kalsın, WebSocket heartbeat kesintisiz aksın.
                 if cfg["mode"] == "exact":
-                    sr = find_exact_duplicates(
+                    sr = await asyncio.to_thread(
+                        find_exact_duplicates,
                         STATE.dataset_path,
                         recursive=recursive_check.value,
                         progress_cb=_cb,
                     )
                 else:
-                    sr = find_similar_images(
+                    sr = await asyncio.to_thread(
+                        find_similar_images,
                         STATE.dataset_path,
                         threshold=cfg["threshold"],
                         algorithm=cfg["algorithm"],
@@ -2105,36 +2536,37 @@ def build_duplicate_tab():
 
                 # Initial keeper'ları seçili strategy ile set et
                 # (apply_action wrapping üzerinden tüm strategy'ler destekli)
-                _bulk_set_keeper(keep_strategy_select.value)
+                _safe_call(_bulk_set_keeper, keep_strategy_select.value)
 
-                _refresh_stats()
-                _refresh_gallery()
+                _safe_call(_refresh_stats)
+                _safe_call(_refresh_gallery)
 
                 if sr.has_duplicates:
-                    prev_btn.enable()
-                    next_btn.enable()
-                    apply_btn.enable()
+                    _safe_enable(prev_btn)
+                    _safe_enable(next_btn)
+                    _safe_enable(apply_btn)
                 else:
-                    prev_btn.disable()
-                    next_btn.disable()
-                    apply_btn.disable()
+                    _safe_disable(prev_btn)
+                    _safe_disable(next_btn)
+                    _safe_disable(apply_btn)
 
-                summary_label.set_text(
+                _safe_set_text(
+                    summary_label,
                     f"Scan tamam: {len(sr.groups)} grup, "
                     f"{sr.removable_count} silinebilir, "
-                    f"{dedup_humanize_bytes(sr.space_freeable_bytes)} kazanım"
+                    f"{dedup_humanize_bytes(sr.space_freeable_bytes)} kazanım",
                 )
-                ui.notify(
+                _safe_notify(
                     f"{len(sr.groups)} grup bulundu" if sr.has_duplicates
                     else "Duplicate bulunamadı",
                     type="positive" if sr.has_duplicates else "info",
                 )
             except Exception as e:
-                ui.notify(f"Scan hatası: {e}", type="negative")
+                _safe_notify(f"Scan hatası: {e}", type="negative")
             finally:
-                progress_bar.visible = False
-                progress_label.set_text("")
-                scan_btn.enable()
+                _safe_set_visible(progress_bar, False)
+                _safe_set_text(progress_label, "")
+                _safe_enable(scan_btn)
 
         scan_btn.on("click", on_scan)
 
@@ -2155,10 +2587,10 @@ def build_duplicate_tab():
                     ui.button("Sil", on_click=_confirm).props("color=negative no-caps")
             dlg.open()
 
-        def _do_apply():
+        async def _do_apply():
             sr = tab_state["scan_result"]
             if sr is None:
-                ui.notify("Önce Scan çalıştır", type="negative")
+                _safe_notify("Önce Scan çalıştır", type="negative")
                 return
 
             # Manuel keeper override'larını apply_action'a uygulanacak şekilde
@@ -2178,36 +2610,50 @@ def build_duplicate_tab():
 
             action = action_select.value
             if action == "delete" and not dryrun_check.value and not yes_check.value:
-                _confirm_delete_dialog(sr.removable_count, on_confirm=_do_apply_inner)
+                # Dialog confirm → coroutine başlat (NiceGUI sync callback'ten
+                # async başlatmak için background_tasks.create kullanır).
+                _confirm_delete_dialog(
+                    sr.removable_count,
+                    on_confirm=lambda: asyncio.create_task(_do_apply_inner()),
+                )
                 return
-            _do_apply_inner()
+            await _do_apply_inner()
 
-        def _do_apply_inner():
+        async def _do_apply_inner():
             sr = tab_state["scan_result"]
+            _safe_disable(apply_btn)
+            _safe_set_visible(progress_bar, True)
+            _safe_set_value(progress_bar, 0)
+            _safe_set_text(progress_label, "Apply ediliyor…")
             try:
-                ar = dedup_apply_action(
+                # Relative path → dataset bazlı (cwd yerine).
+                resolved_invalid_dir = _resolve_dataset_relative(invalid_dir_input.value)
+                # Move/delete binlerce dosyada uzun sürer — thread'e at.
+                ar = await asyncio.to_thread(
+                    dedup_apply_action,
                     sr,
                     action=action_select.value,
-                    invalid_dir=invalid_dir_input.value or None,
+                    invalid_dir=resolved_invalid_dir,
                     keep_strategy="first",  # zaten manuel keeper'ı başa aldık
                     dry_run=dryrun_check.value,
                 )
 
-                if action_select.value == "move" and invalid_dir_input.value:
-                    report_path = Path(invalid_dir_input.value) / DEDUP_REPORT_NAME
-                else:
-                    report_path = Path(STATE.dataset_path) / DEDUP_REPORT_NAME
+                report_path = Path(_report_path(DEDUP_REPORT_NAME, STATE.dataset_path))
 
+                _safe_set_text(progress_label, "Rapor yazılıyor…")
                 cfg = _build_config()
-                dedup_write_report(
+                await asyncio.to_thread(
+                    dedup_write_report,
                     report_path,
                     scan_result=sr,
                     action_result=ar,
                     recursive=recursive_check.value,
                     config=cfg,
                 )
-                undo_input.set_value(str(report_path))
+                _safe_set_value(undo_input, str(report_path))
                 STATE.last_report_paths[2] = str(report_path)
+                if action_select.value != "none" and not dryrun_check.value:
+                    _append_manifest_from_report(2, report_path)
 
                 dryrun_tag = " (DRY-RUN)" if dryrun_check.value else ""
                 if action_select.value == "move":
@@ -2216,11 +2662,15 @@ def build_duplicate_tab():
                     msg = f"Silinen: {len(ar.entries)}{dryrun_tag}"
                 else:
                     msg = f"Sadece raporlandı: {len(sr.groups)} grup"
-                summary_label.set_text(f"{msg}\nRapor: {report_path}")
-                ui.notify(msg, type="positive" if not dryrun_check.value else "info")
+                _safe_set_text(summary_label, f"{msg}\nRapor: {report_path}")
+                _safe_notify(msg, type="positive" if not dryrun_check.value else "info")
                 STATE.notify_change()
             except Exception as e:
-                ui.notify(f"Aksiyon hatası: {e}", type="negative")
+                _safe_notify(f"Aksiyon hatası: {e}", type="negative")
+            finally:
+                _safe_set_visible(progress_bar, False)
+                _safe_set_text(progress_label, "")
+                _safe_enable(apply_btn)
 
         apply_btn.on("click", _do_apply)
 
@@ -2295,7 +2745,7 @@ def build_quality_tab():
                 with ui.row().classes("w-full items-center gap-1 no-wrap"):
                     invalid_dir_input = ui.input(
                         "Invalid dir",
-                        placeholder="move için zorunlu",
+                        placeholder="move için zorunlu — çalışma klasörü DIŞINA ver (örn. ../_rejected)",
                     ).props("dense outlined").classes("flex-grow")
                     ui.button(
                         icon="folder_open",
@@ -2463,7 +2913,7 @@ def build_quality_tab():
 
         def _on_action_change(value: str):
             if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
-                invalid_dir_input.value = str(Path(STATE.dataset_path) / "quality_rejected")
+                invalid_dir_input.value = _reject_dir_for("03-quality")
                 invalid_dir_input.update()
         action_select.on_value_change(lambda e: _on_action_change(e.value))
 
@@ -2635,17 +3085,16 @@ def build_quality_tab():
 
         def _execute_action(sr, action: str):
             try:
+                # Relative path → dataset bazlı (cwd yerine).
+                resolved_invalid_dir = _resolve_dataset_relative(invalid_dir_input.value)
                 ar = quality_apply_action(
                     sr.results,
                     source_root=STATE.dataset_path,
                     action=action,
-                    invalid_dir=invalid_dir_input.value or None,
+                    invalid_dir=resolved_invalid_dir,
                     dry_run=dryrun_check.value,
                 )
-                if action == "move" and invalid_dir_input.value:
-                    report_path = Path(invalid_dir_input.value) / QUALITY_REPORT_NAME
-                else:
-                    report_path = Path(STATE.dataset_path) / QUALITY_REPORT_NAME
+                report_path = Path(_report_path(QUALITY_REPORT_NAME, STATE.dataset_path))
 
                 quality_write_report(
                     report_path,
@@ -2659,6 +3108,8 @@ def build_quality_tab():
                 )
                 undo_input.set_value(str(report_path))
                 STATE.last_report_paths[3] = str(report_path)
+                if action != "none" and not dryrun_check.value:
+                    _append_manifest_from_report(3, report_path)
 
                 dryrun_tag = " (DRY-RUN)" if dryrun_check.value else ""
                 if action == "move":
@@ -2750,7 +3201,7 @@ def build_watermark_tab():
                 with ui.row().classes("w-full items-center gap-1 no-wrap"):
                     invalid_dir_input = ui.input(
                         "Rejected klasörü",
-                        placeholder="move için zorunlu",
+                        placeholder="move için zorunlu — çalışma klasörü DIŞINA ver (örn. ../_rejected)",
                     ).props("dense outlined").classes("flex-grow")
                     ui.button(
                         icon="folder_open",
@@ -2829,10 +3280,10 @@ def build_watermark_tab():
                 ).classes("w-full mt-1")
 
         def _on_action_change(value: str):
-            """Move seçilince invalid_dir'i <dataset>/rejected ile auto-doldur
-            (kullanıcı boş bıraktıysa). Validate tab'ındaki patern."""
+            """Move seçilince invalid_dir'i <base>/_rejected/<stage> (KARDEŞ) ile
+            auto-doldur (kullanıcı boş bıraktıysa). Validate tab'ındaki patern."""
             if value == "move" and not invalid_dir_input.value and STATE.dataset_path:
-                invalid_dir_input.value = str(Path(STATE.dataset_path) / "rejected")
+                invalid_dir_input.value = _reject_dir_for("04-watermark")
                 invalid_dir_input.update()
 
         action_select.on_value_change(lambda e: _on_action_change(e.value))
@@ -2851,6 +3302,8 @@ def build_watermark_tab():
             if action == "move" and not invalid_dir:
                 ui.notify("Move için rejected klasörü gerekli", type="warning")
                 return
+            # Relative path → dataset bazlı (cwd yerine).
+            invalid_dir = _resolve_dataset_relative(invalid_dir) or ""
 
             run_btn.disable()
             progress_bar.visible = True
@@ -2891,10 +3344,7 @@ def build_watermark_tab():
             )
 
             # Rapor yolu çözümle
-            if action == "move" and invalid_dir:
-                report_path = Path(invalid_dir) / WATERMARK_REPORT_NAME
-            else:
-                report_path = input_dir / WATERMARK_REPORT_NAME
+            report_path = Path(_report_path(WATERMARK_REPORT_NAME, str(input_dir)))
             try:
                 watermark_write_report(
                     report_path,
@@ -3129,8 +3579,7 @@ def build_resize_tab():
                 return
 
             # Rapor
-            default_dir = Path(out_dir) if out_dir else input_dir
-            report_path = default_dir / RESIZE_REPORT_NAME
+            report_path = Path(_report_path(RESIZE_REPORT_NAME, str(out_dir) if out_dir else str(input_dir)))
             try:
                 resize_write_report(
                     report_path,
@@ -3153,6 +3602,8 @@ def build_resize_tab():
             skipped_card.text = str(sr.skipped_count)
 
             STATE.last_report_paths[5] = str(report_path)
+            if not dryrun_check.value:
+                _append_manifest_from_report(5, report_path, output_dir=out_dir or str(input_dir))
             undo_input.value = str(report_path)
             ui.notify(
                 f"Resize: {sr.resized_count}/{sr.total_scanned} işlendi{mode_lbl}",
@@ -3921,7 +4372,7 @@ def build_golden_set_tab():
                 return
 
             # Rapor
-            report_out = out_p / "selection_report.json"
+            report_out = Path(_report_path("selection_report.json", str(out_p)))
             cfg = {
                 "count": count,
                 "distribution": distribution,
@@ -3984,6 +4435,8 @@ def build_golden_set_tab():
             if rp:
                 STATE.last_report_paths[7] = str(rp)
                 undo_input.value = str(rp)
+                if not dryrun_check.value:
+                    _append_manifest_from_report(7, rp, output_dir=str(out_p))
 
             progress_label.text = f"✓ Tamam {mode}"
             run_btn.enable()
