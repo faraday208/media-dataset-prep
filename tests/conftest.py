@@ -9,6 +9,10 @@ import pytest
 # Repo root'taki ui.py'yi import edebilmek için path'e ekle
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# NiceGUI User testleri (UI render doğrulaması) — selenium gerektirmeyen user_plugin
+# (screen_plugin selenium ister). Sync integration testlerini etkilemez.
+pytest_plugins = ["nicegui.testing.user_plugin"]
+
 
 def _touch(path, mtime):
     with open(path, 'wb') as f:

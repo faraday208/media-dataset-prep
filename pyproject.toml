@@ -31,12 +31,15 @@ dev = [
 ]
 ui = [
     "nicegui>=3.0",
+    "pytest-asyncio>=1.4.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q --tb=short"
+asyncio_mode = "auto"
+main_file = "ui.py"
 
 [tool.uv]
 package = false
