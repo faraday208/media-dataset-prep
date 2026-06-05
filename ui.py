@@ -910,10 +910,8 @@ def build_organize_tab():
                 _suggest_output_dir(mode_select.value)
 
                 with ui.row().classes("gap-2 mt-2 w-full items-center"):
-                    preview_btn = ui.button("Dry-Run Preview").props(
-                        "color=primary no-caps"
-                    )
-                    execute_btn = ui.button("Execute").props("color=positive no-caps")
+                    run_btn = ui.button("Organize").props("color=primary no-caps")
+                    dryrun_check = ui.checkbox("Dry-run", value=True)
                     progress_label = ui.label("").classes(
                         "text-xs text-slate-600"
                     )
@@ -928,7 +926,7 @@ def build_organize_tab():
                 )
                 undo_input = ui.input(
                     "rename_report.json yolu",
-                    placeholder="(execute sonrası otomatik dolar)",
+                    placeholder="(run sonrası otomatik dolar)",
                 ).props("dense outlined").classes("w-full")
 
                 def _restore_undo_from_memory():
@@ -945,7 +943,7 @@ def build_organize_tab():
                     undo_preview_btn = ui.button("Preview Undo").props(
                         "outline color=primary no-caps"
                     )
-                    undo_btn = ui.button("Undo from report").props(
+                    undo_btn = ui.button("Undo").props(
                         "outline color=grey-7 no-caps"
                     )
 
@@ -956,7 +954,7 @@ def build_organize_tab():
                         "text-sm uppercase text-slate-500 tracking-wide"
                     )
                 summary_label = ui.label(
-                    "Henüz preview üretilmedi — sol panelde Dry-Run Preview tıkla."
+                    "Henüz preview üretilmedi — sol panelde Dry-run açıkken Organize'a tıkla."
                 ).classes("text-sm text-slate-600 italic mt-1")
 
                 def _restore_preview_from_memory():
@@ -988,7 +986,7 @@ def build_organize_tab():
                     detail = " · ".join(parts) if parts else "kayıt mevcut"
                     summary_label.set_text(
                         f"✓ Organize tamamlandı — {detail}\n"
-                        "(detay tablo için Dry-Run'a basabilirsin)"
+                        "(detay tablo için Dry-run açıkken Organize'a basabilirsin)"
                     )
                 STATE.on_change(_restore_preview_from_memory)
                 _restore_preview_from_memory()
@@ -1079,7 +1077,7 @@ def build_organize_tab():
                 return
             # Büyük dizinlerde scan_directory + generate_*_plan main thread'i
             # blok edip WebSocket heartbeat'i öldürüyordu — thread'e at.
-            preview_btn.disable()
+            run_btn.disable()
             try:
                 _safe_set_text(summary_label, "Plan oluşturuluyor…")
                 plan = await asyncio.to_thread(_build_plan)
@@ -1089,7 +1087,7 @@ def build_organize_tab():
             except Exception as e:
                 _safe_notify(f"Hata: {e}", type="negative")
             finally:
-                _safe_enable(preview_btn)
+                _safe_enable(run_btn)
 
         async def _do_execute(plan):
             """Asıl execute mantığı — conflict onayı sonrası burada toplanır.
@@ -1098,8 +1096,7 @@ def build_organize_tab():
             arka plana atılır; UI thread serbest kalır, WebSocket heartbeat kesilmez.
             """
             mode = mode_select.value
-            _safe_disable(execute_btn)
-            _safe_disable(preview_btn)
+            _safe_disable(run_btn)
             _safe_set_value(progress_bar, 0)
             _safe_set_visible(progress_bar, True)
             _safe_set_text(progress_label, "Hazırlanıyor…")
@@ -1151,8 +1148,7 @@ def build_organize_tab():
             finally:
                 _safe_set_visible(progress_bar, False)
                 _safe_set_text(progress_label, "")
-                _safe_enable(execute_btn)
-                _safe_enable(preview_btn)
+                _safe_enable(run_btn)
 
         def _show_conflict_dialog(conflicts, on_confirm):
             """Çakışma listesini modal ile göster, kullanıcı onaylarsa devam et."""
@@ -1273,8 +1269,14 @@ def build_organize_tab():
         def on_undo_preview():
             _run_undo(dry_run=True)
 
-        preview_btn.on("click", on_preview)
-        execute_btn.on("click", on_execute)
+        async def on_run():
+            # Dry-run → plan + preview (dosyaya dokunmaz); kapalı → conflict + execute.
+            if dryrun_check.value:
+                await on_preview()
+            else:
+                await on_execute()
+
+        run_btn.on("click", on_run)
         undo_preview_btn.on("click", on_undo_preview)
         undo_btn.on("click", on_undo)
 
@@ -1372,7 +1374,7 @@ def build_validate_tab():
                 )
                 undo_input = ui.input(
                     "validate_report.json yolu",
-                    placeholder="(move action sonrası otomatik dolar)",
+                    placeholder="(run sonrası otomatik dolar)",
                 ).props("dense outlined").classes("w-full")
                 with ui.row().classes("gap-2"):
                     undo_preview_btn = ui.button("Preview Undo").props(
@@ -1955,10 +1957,10 @@ def build_duplicate_tab():
                 )
                 undo_input = ui.input(
                     "duplicate_report.json yolu",
-                    placeholder="(move action sonrası otomatik dolar)",
+                    placeholder="(run sonrası otomatik dolar)",
                 ).props("dense outlined").classes("w-full")
                 with ui.row().classes("gap-2"):
-                    undo_preview_btn = ui.button("Preview").props(
+                    undo_preview_btn = ui.button("Preview Undo").props(
                         "outline color=primary no-caps"
                     )
                     undo_btn = ui.button("Undo").props(
@@ -2780,7 +2782,7 @@ def build_quality_tab():
                 )
                 undo_input = ui.input(
                     "quality_report.json yolu",
-                    placeholder="(move action sonrası otomatik dolar)",
+                    placeholder="(run sonrası otomatik dolar)",
                 ).props("dense outlined").classes("w-full")
                 with ui.row().classes("gap-2"):
                     undo_preview_btn = ui.button("Preview Undo").props(
@@ -3199,7 +3201,7 @@ def build_watermark_tab():
                 )
                 undo_input = ui.input(
                     "watermark_report.json yolu",
-                    placeholder="(move sonrası otomatik dolar)",
+                    placeholder="(run sonrası otomatik dolar)",
                 ).props("dense outlined").classes("w-full")
                 undo_btn = ui.button("Undo").props(
                     "outline color=grey-7 no-caps"
@@ -3451,7 +3453,7 @@ def build_resize_tab():
                     "JPEG quality", value=95, min=60, max=100, step=1,
                 ).props("dense outlined").classes("w-full")
 
-                dryrun_check = ui.checkbox("Dry-run", value=False)
+                dryrun_check = ui.checkbox("Dry-run", value=True)
 
                 with ui.row().classes("gap-2 mt-3 w-full items-center"):
                     run_btn = ui.button("Resize").props("color=primary no-caps")
