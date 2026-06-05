@@ -65,6 +65,10 @@ def build_organize_tab():
                     value=False,
                 )
 
+                # Resume restore sırasında _sync_mode_options'ın auto-switch +
+                # notify yan etkilerini bastırmak için bayrak.
+                _restoring = {"active": False}
+
                 # Mode seçenekleri — Recursive=Flat seçilince In-place gizlenir
                 # (cross-folder relocation kaynak ağacında destructive olur).
                 MODE_OPTIONS_ALL = {
@@ -85,7 +89,7 @@ def build_organize_tab():
                 def _sync_mode_options(recursive_value: str):
                     if recursive_value == "flat":
                         mode_select.options = MODE_OPTIONS_NO_INPLACE
-                        if mode_select.value == "rename":
+                        if mode_select.value == "rename" and not _restoring["active"]:
                             mode_select.value = "copy"
                             ui.notify(
                                 "Flat mod in-place'i desteklemiyor — Copy'ye geçildi",
@@ -100,6 +104,7 @@ def build_organize_tab():
                             recursive_value == "none"
                             and mode_select.value == "rename"
                             and not output_input.value
+                            and not _restoring["active"]
                         ):
                             mode_select.value = "copy"
                             ui.notify(
@@ -144,6 +149,42 @@ def build_organize_tab():
                 )
                 # İlk render'da default mode'a göre öneri (default rename → no-op)
                 _suggest_output_dir(mode_select.value)
+
+                def _restore_config_from_memory():
+                    """Resume: önceki organize reçetesini forma geri yükle —
+                    recursive / mode / output_dir / include_ext. Yalnızca alan
+                    default'taysa uygulanır (kullanıcının aktif düzenini ezmez);
+                    prefix ayrı restore ediliyor. _sync_mode_options'ın auto-switch'i
+                    _restoring bayrağıyla bastırılır."""
+                    prm = STATE.last_stage_params.get(0) or {}
+                    if not prm:
+                        return
+                    _restoring["active"] = True
+                    try:
+                        out = prm.get("output_dir")
+                        if out and not output_input.value:
+                            output_input.set_value(out)
+                        if prm.get("include_ext") and not include_ext.value:
+                            include_ext.set_value(True)
+                        rec = prm.get("recursive")
+                        if (
+                            rec in {"none", "flat", "tree"}
+                            and recursive_select.value == "none"
+                        ):
+                            recursive_select.set_value(rec)
+                            _sync_mode_options(rec)  # mode options sync (auto-switch bastırılı)
+                        mode = prm.get("mode")
+                        if (
+                            mode
+                            and mode_select.value == "rename"
+                            and mode in mode_select.options
+                        ):
+                            mode_select.set_value(mode)
+                    finally:
+                        _restoring["active"] = False
+
+                STATE.on_change(_restore_config_from_memory)
+                _restore_config_from_memory()
 
                 with ui.row().classes("gap-2 mt-2 w-full items-center"):
                     run_btn = ui.button("Organize").props("color=primary no-caps")
@@ -364,7 +405,9 @@ def build_organize_tab():
                     0, report_path,
                     output_dir=output_input.value or STATE.dataset_path,
                     params={"prefix": prefix_input.value,
-                            "recursive": recursive_select.value, "mode": mode},
+                            "recursive": recursive_select.value, "mode": mode,
+                            "include_ext": include_ext.value,
+                            "output_dir": output_input.value or None},
                 )
                 _safe_set_value(undo_input, report_path)
                 _safe_set_text(
