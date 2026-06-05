@@ -1287,7 +1287,7 @@ def build_validate_tab():
         ui.label("01 — Validate").classes("text-2xl font-semibold")
         ui.label(
             "Hatalı görselleri tespit et: format / boyut / aspect / bütünlük. "
-            "Sadece raporla, /rejected'a taşı veya sil — undo destekli."
+            "/rejected'a taşı veya sil — dry-run ile önce prova yap, undo destekli."
         ).classes("text-sm text-slate-600")
 
         with ui.grid(columns="1fr 1fr").classes("w-full gap-6 mt-2"):
@@ -1301,12 +1301,11 @@ def build_validate_tab():
 
                 action_select = ui.select(
                     {
-                        "none": "Sadece raporla (default)",
-                        "move": "/rejected'a taşı (undoable)",
+                        "move": "/rejected'a taşı (default, undoable)",
                         "delete": "Sil (irreversible)",
                     },
                     label="Hatalı dosyalar için aksiyon",
-                    value="none",
+                    value="move",
                 ).props("dense outlined").classes("w-full")
 
                 with ui.row().classes("w-full items-center gap-1 no-wrap"):
@@ -1484,6 +1483,9 @@ def build_validate_tab():
                 invalid_dir_input.update()
 
         action_select.on_value_change(lambda e: _on_action_change(e.value))
+        # Default action "move" olduğu için on_value_change load'da tetiklenmez;
+        # dataset seçiliyse invalid_dir'i bir kez kuruluşta auto-doldur.
+        _on_action_change(action_select.value)
 
         def _populate_results(results: list[dict], summary: dict, action_msg: str = ""):
             total_card.set_text(str(summary["total"]))
@@ -1623,52 +1625,19 @@ def build_validate_tab():
                     "reasons": reasons,
                 }
 
+                # Aksiyon her zaman move/delete (salt-rapor için dry-run kullanılır).
                 action = action_select.value
-                if action != "none":
-                    if action == "delete" and not dryrun_check.value and not yes_check.value:
-                        _confirm_delete_dialog(
-                            invalid,
-                            on_confirm=lambda: _execute_action(
-                                action, results, summary, exts
-                            ),
-                        )
-                        _maybe_warn_full_rejection(summary)
-                        return
-                    _execute_action(action, results, summary, exts)
+                if action == "delete" and not dryrun_check.value and not yes_check.value:
+                    _confirm_delete_dialog(
+                        invalid,
+                        on_confirm=lambda: _execute_action(
+                            action, results, summary, exts
+                        ),
+                    )
                     _maybe_warn_full_rejection(summary)
                     return
-
-                # action="none": sadece rapor — yine bloklayıcı olabilir,
-                # write_report dosyaya JSON dump'ı thread'de yapılsın.
-                report_path = Path(_report_path(VALIDATE_REPORT_NAME, STATE.dataset_path))
-                action_res = await asyncio.to_thread(
-                    validate_apply_action,
-                    results,
-                    source_root=STATE.dataset_path,
-                    action="none",
-                )
-                await asyncio.to_thread(
-                    _write_report_helper,
-                    report_path,
-                    summary=summary,
-                    results=results,
-                    action_result=action_res,
-                    config=config,
-                    exts=exts,
-                )
-                _safe_set_value(undo_input, str(report_path))
-                STATE.last_report_paths[1] = str(report_path)
-                _safe_call(
-                    _populate_results,
-                    results, summary,
-                    action_msg=f"Rapor: {report_path}",
-                )
-                _safe_notify(
-                    f"{invalid}/{total} hatalı (sadece raporlandı)",
-                    type="info",
-                )
+                _execute_action(action, results, summary, exts)
                 _maybe_warn_full_rejection(summary)
-                STATE.notify_change()
 
             except Exception as e:
                 _safe_notify(f"Validate hatası: {e}", type="negative")
