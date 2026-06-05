@@ -182,8 +182,8 @@ def build_resize_tab():
                 ui.notify(f"Resize hatası: {e}", type="negative")
                 return
 
-            # Rapor
-            report_path = Path(_report_path(RESIZE_REPORT_NAME, str(out_dir) if out_dir else str(input_dir)))
+            # Rapor PROJE KÖKÜNDE (base_path) — aktif dataset_path/output değil.
+            report_path = Path(_report_path(RESIZE_REPORT_NAME, STATE.base_path))
             try:
                 resize_write_report(
                     report_path,

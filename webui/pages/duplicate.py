@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 import asyncio
+import json
 
 from nicegui import ui
 from dedup_core import (  # noqa: E402
@@ -12,9 +13,9 @@ from dedup_core import (  # noqa: E402
     find_exact_duplicates,
     find_similar_images,
     humanize_bytes as dedup_humanize_bytes,
+    report_name_for_mode as dedup_report_name_for_mode,
     undo_from_report as dedup_undo_from_report,
     write_report as dedup_write_report,
-    DEFAULT_REPORT_NAME as DEDUP_REPORT_NAME,
 )
 
 from webui.state import STATE
@@ -29,6 +30,7 @@ from webui.helpers import (
     _resolve_dataset_relative,
     _report_path,
     _append_manifest_from_report,
+    _find_manifest,
     _reject_dir_for,
     _path_to_url,
     _aspect_label,
@@ -163,7 +165,7 @@ def build_duplicate_tab():
                     "text-sm uppercase text-slate-500 tracking-wide"
                 )
                 undo_input = ui.input(
-                    "duplicate_report.json yolu",
+                    "duplicate_<mode>_report.json yolu",
                     placeholder="(run sonrası otomatik dolar)",
                 ).props("dense outlined").classes("w-full")
                 with ui.row().classes("gap-2"):
@@ -816,7 +818,11 @@ def build_duplicate_tab():
                     dry_run=dryrun_check.value,
                 )
 
-                report_path = Path(_report_path(DEDUP_REPORT_NAME, STATE.dataset_path))
+                # Mode'a göre kanonik isim: exact ve similar raporları birbirini
+                # ezmesin (önce exact temizle → sonra similar review akışı).
+                report_name = dedup_report_name_for_mode(sr.mode)
+                # Rapor proje kökünde (base_path) — aktif dataset_path değil.
+                report_path = Path(_report_path(report_name, STATE.base_path))
 
                 _safe_set_text(progress_label, "Rapor yazılıyor…")
                 cfg = _build_config()
@@ -831,7 +837,22 @@ def build_duplicate_tab():
                 _safe_set_value(undo_input, str(report_path))
                 STATE.last_report_paths[2] = str(report_path)
                 if action_select.value != "none" and not dryrun_check.value:
-                    _append_manifest_from_report(2, report_path)
+                    # params: resume'da config formunu geri yüklemek için reçete
+                    # (organize/validate stage ile simetrik — bkz. _restore_config).
+                    _append_manifest_from_report(
+                        2, report_path,
+                        output_dir=invalid_dir_input.value or None,
+                        params={
+                            "mode": sr.mode,
+                            "threshold": cfg["threshold"],
+                            "algorithm": cfg["algorithm"],
+                            "workers": cfg["workers"],
+                            "recursive": recursive_check.value,
+                            "keep_strategy": keep_strategy_select.value,
+                            "action": action_select.value,
+                            "invalid_dir": invalid_dir_input.value or None,
+                        },
+                    )
 
                 dryrun_tag = " (DRY-RUN)" if dryrun_check.value else ""
                 if action_select.value == "move":
@@ -875,6 +896,110 @@ def build_duplicate_tab():
                     STATE.notify_change()
             except Exception as e:
                 ui.notify(f"Undo hatası: {e}", type="negative")
+
+        # ------ Resume (manifest'ten MODE-BAZLI geri yükleme) ------
+        # exact ve similar ayrı yaşar: aktif mode select'e göre o mode'un SON
+        # manifest run'ından config + undo + hafif sonuç döner. Mode değiştikçe
+        # (on_value_change) o mode'un kaydı yüklenir. Gallery YENİDEN İNŞA EDİLMEZ
+        # (scan_result interaktif) — canlı scan varsa sonuç restore'u atlanır.
+
+        def _manifest_run_for_mode(mode: str):
+            """Manifest'ten idx=2 + bu mode'un SON run'ını bul → (report_path|None,
+            params|None). _load_project_memory'nin tek-slot'unu by-pass eder."""
+            mpath = _find_manifest(STATE.dataset_path)
+            if not mpath:
+                return None, None
+            try:
+                data = json.loads(Path(mpath).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return None, None
+            runs = data.get("runs") if isinstance(data, dict) else None
+            if not isinstance(runs, list):
+                return None, None
+            found = None
+            for run in runs:
+                if (
+                    isinstance(run, dict)
+                    and run.get("idx") == 2
+                    and (run.get("params") or {}).get("mode") == mode
+                ):
+                    found = run  # son eşleşen kazanır
+            if not found:
+                return None, None
+            rp = Path(mpath).parent / found.get("report", "")
+            return (str(rp) if rp.is_file() else None), found.get("params")
+
+        def _clear_stat_cards():
+            for c in tab_state["stat_cards"].values():
+                c.set_text("—")
+            space_label.set_text("")
+            summary_label.set_text("Henüz scan yapılmadı — sol panelde Scan tıkla.")
+
+        def _apply_config(prm: dict):
+            """Aktif mode'un kayıtlı paramlarını forma KOŞULSUZ yükle (mode hariç —
+            mode zaten aktif select). Mode-bazlı resume semantiği: mode'a geçince o
+            mode'un tam ayarları gelsin."""
+            if prm.get("algorithm") in algorithm_select.options:
+                algorithm_select.set_value(prm["algorithm"])
+            if isinstance(prm.get("recursive"), bool):
+                recursive_check.set_value(prm["recursive"])
+            if prm.get("keep_strategy") in keep_strategy_select.options:
+                keep_strategy_select.set_value(prm["keep_strategy"])
+            if prm.get("action") in {"none", "move", "delete"}:
+                action_select.set_value(prm["action"])
+            if prm.get("threshold") is not None:
+                threshold_input.set_value(prm["threshold"])
+            if prm.get("workers") is not None:
+                workers_input.set_value(prm["workers"])
+            # invalid_dir action'dan SONRA — _on_action_change'in doldurduğu
+            # default reject dir'i kayıtlı (custom olabilir) değerle ez.
+            if prm.get("invalid_dir"):
+                invalid_dir_input.set_value(prm["invalid_dir"])
+
+        def _restore_for_mode():
+            """Aktif mode'a ait son manifest run'ından config + undo + hafif sonuç."""
+            mode = mode_select.value
+            report_path, prm = _manifest_run_for_mode(mode)
+
+            # 1) undo input → bu mode'un raporu (alan boşsa)
+            if report_path:
+                undo_input.set_value(report_path)
+
+            # 2) config restore (mode hariç)
+            if prm:
+                _apply_config(prm)
+
+            # 3) hafif sonuç restore — canlı scan varsa dokunma
+            if tab_state["scan_result"] is not None:
+                return
+            if not report_path:
+                _clear_stat_cards()  # bu mode'un kaydı yok → diğer mode'dan kalanı temizle
+                return
+            try:
+                data = json.loads(Path(report_path).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return
+            summary = data.get("summary")
+            if not isinstance(summary, dict):
+                _clear_stat_cards()
+                return
+            cards = tab_state["stat_cards"]
+            cards["total"].set_text(str(summary.get("total_scanned", "—")))
+            cards["unique"].set_text(str(summary.get("unique", "—")))
+            cards["groups"].set_text(str(summary.get("groups", "—")))
+            cards["removable"].set_text(str(summary.get("duplicates", "—")))
+            space_label.set_text(
+                f"Kazanılabilecek: {summary.get('space_freeable_human', '')}"
+            )
+            summary_label.set_text(
+                f"✓ Önceki {mode} raporu yüklendi — gallery için tekrar Scan'le.\n"
+                f"Rapor: {report_path}"
+            )
+
+        # Mode değişince o mode'un kaydını yükle (_toggle_similar zaten ayrı bağlı).
+        mode_select.on_value_change(lambda e: _restore_for_mode())
+        STATE.on_change(_restore_for_mode)
+        _restore_for_mode()
 
         undo_preview_btn.on("click", lambda: _run_undo(dry_run=True))
         undo_btn.on("click", lambda: _run_undo(dry_run=False))

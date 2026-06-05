@@ -444,7 +444,9 @@ def build_organize_tab():
                 error = result.get("error")
                 _safe_call(_set_result_cards, success, error)
 
-                report_path = _report_path("rename_report.json", output_input.value or STATE.dataset_path)
+                # Rapor PROJE KÖKÜNDE toplanır (base_path) — aktif dataset_path
+                # (organized) değil; tüm stage'lerle ortak report/ klasörü.
+                report_path = _report_path("rename_report.json", STATE.base_path)
                 _safe_set_text(progress_label, "Rapor yazılıyor…")
                 await asyncio.to_thread(
                     media_organizer.save_report, plan, report_path, mode=mode

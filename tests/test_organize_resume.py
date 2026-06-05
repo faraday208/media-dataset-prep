@@ -69,8 +69,8 @@ async def test_resume_real_manifest_end_to_end(user, tmp_path) -> None:
     ds.mkdir()
     out = ds / "organized"  # _suggest_output_dir'ın önerdiği yer (dataset içi)
 
-    # organize'ın yazdığı gibi: rapor + manifest (copy modu, output_dir=out)
-    report = ui._report_path("rename_report.json", str(out))
+    # organize'ın yazdığı gibi: rapor dataset kökünde (output_dir=out ayrı param)
+    report = ui._report_path("rename_report.json", str(ds))
     Path(report).parent.mkdir(parents=True, exist_ok=True)
     Path(report).write_text(json.dumps({
         "tool": "media-organizer", "total_files": 2,

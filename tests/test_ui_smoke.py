@@ -90,6 +90,61 @@ def test_pipeline_state_validity(tmp_path):
     assert s.is_valid_dataset()
 
 
+# ---------- _reject_dir_for ----------
+
+def test_reject_dir_inside_dataset(tmp_path):
+    """Reject klasörü dataset'in İÇİNDE açılır (yanına/kardeşe değil) — recursive
+    scan _rejected'ı atladığı için içeride güvenli, dataset self-contained kalır."""
+    import ui
+    ds = tmp_path / "Pics"
+    ds.mkdir()
+    ui.STATE.base_path = str(ds)
+    reject = ui._reject_dir_for("02-duplicate")
+    assert reject == str(ds.resolve() / "_rejected" / "02-duplicate")
+    # parent'a (kardeşe) AÇMAMALI
+    assert reject != str(ds.resolve().parent / "_rejected" / "02-duplicate")
+
+
+def test_report_dir_inside_dataset(tmp_path):
+    """Rapor klasörü de dataset'in İÇİNDE (reject ile tutarlı) — base parent'a
+    değil base'in içine açılır."""
+    import ui
+    ds = tmp_path / "Pics"
+    ds.mkdir()
+    rdir = ui._report_dir_for(str(ds))
+    assert rdir == str(ds.resolve() / "report")
+    assert rdir != str(ds.resolve().parent / "report")
+
+
+def test_reject_uses_project_root_not_active_dataset(tmp_path):
+    """reject PROJE KÖKÜNÜ (base_path) kullanır, aktif dataset_path'i (organized)
+    değil — pipeline ilerleyip dataset_path organize çıktısına kaysa bile reject
+    proje kökünde toplanır. (Regresyon: validate organized'da çalışınca _rejected
+    organized içine düşüyordu.)"""
+    import json
+    from pathlib import Path
+    import ui
+    pics = tmp_path / "Pics"
+    organized = pics / "organized"
+    organized.mkdir(parents=True)
+    ui.STATE.base_path = str(pics)
+    ui.STATE.last_report_paths.clear()
+    ui.STATE.last_stage_params.clear()
+    # organize çıktısını manifest'e yaz → dataset_path artık organized döner
+    report = ui._report_path("rename_report.json", str(pics))
+    Path(report).write_text(json.dumps({"tool": "x", "renames": []}))
+    ui._append_manifest_from_report(
+        0, report, output_dir=str(organized),
+        params={"output_dir": str(organized)},
+    )
+    # aktif iş klasörü organized'a kaydı
+    assert "organized" in ui.STATE.dataset_path
+    # AMA reject proje kökünde (Pics), organized'da DEĞİL
+    reject = ui._reject_dir_for("01-validate")
+    assert reject == str(pics.resolve() / "_rejected" / "01-validate")
+    assert "organized" not in reject
+
+
 # ---------- _aspect_label ----------
 
 def test_aspect_label_common_ratios():

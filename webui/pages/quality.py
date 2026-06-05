@@ -416,7 +416,8 @@ def build_quality_tab():
                     invalid_dir=resolved_invalid_dir,
                     dry_run=dryrun_check.value,
                 )
-                report_path = Path(_report_path(QUALITY_REPORT_NAME, STATE.dataset_path))
+                # Rapor proje kökünde (base_path) — aktif dataset_path değil.
+                report_path = Path(_report_path(QUALITY_REPORT_NAME, STATE.base_path))
 
                 quality_write_report(
                     report_path,
