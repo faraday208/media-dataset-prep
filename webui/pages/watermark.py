@@ -156,6 +156,27 @@ def build_watermark_tab():
 
         action_select.on_value_change(lambda e: _on_action_change(e.value))
 
+        def _confirm_delete_dialog(invalid_count: int, *, on_confirm):
+            with ui.dialog() as dlg, ui.card().classes("w-[500px]"):
+                ui.label("⚠ Kalıcı silme onayı").classes("text-lg font-semibold")
+                ui.label(
+                    f"{invalid_count} watermark'lı dosya KALICI olarak silinecek. "
+                    "Bu işlem geri alınamaz. Önce 'move' ile dene veya Dry-run aç."
+                ).classes("text-sm text-slate-700")
+                with ui.row().classes("w-full justify-end gap-2 mt-3"):
+                    ui.button("Cancel", on_click=dlg.close).props(
+                        "flat color=grey no-caps"
+                    )
+
+                    def _confirm():
+                        dlg.close()
+                        on_confirm()
+
+                    ui.button("Sil", on_click=_confirm).props(
+                        "color=negative no-caps"
+                    )
+            dlg.open()
+
         def _do_run():
             if not STATE.is_valid_dataset():
                 ui.notify(
@@ -203,66 +224,76 @@ def build_watermark_tab():
                 ui.notify(f"Inference hatası: {e}", type="negative")
                 return
 
-            ar = watermark_apply_action(
-                sr.results,
-                source_root=input_dir,
-                action=action,
-                invalid_dir=invalid_dir or None,
-                dry_run=bool(dryrun_check.value),
-            )
-
-            # Rapor yolu çözümle
-            report_path = Path(_report_path(WATERMARK_REPORT_NAME, str(input_dir)))
-            try:
-                watermark_write_report(
-                    report_path,
-                    scan_result=sr, action_result=ar,
-                    recursive=bool(recursive_check.value),
+            def _apply_and_finish():
+                ar = watermark_apply_action(
+                    sr.results,
+                    source_root=input_dir,
+                    action=action,
+                    invalid_dir=invalid_dir or None,
+                    dry_run=bool(dryrun_check.value),
                 )
-            except Exception as e:  # noqa: BLE001
-                ui.notify(f"Rapor yazma hatası: {e}", type="negative")
 
-            progress_bar.visible = False
-            run_btn.enable()
-            mode = " (DRY-RUN)" if dryrun_check.value else ""
-            summary_label.text = (
-                f"Total: {sr.total_scanned}, Watermark: {sr.invalid_count}, "
-                f"Action: {ar.action}{mode}"
-            )
-            total_card.text = str(sr.total_scanned)
-            clean_card.text = str(sr.valid_count)
-            wm_card.text = str(sr.invalid_count)
-
-            # Invalid table
-            rows = []
-            for r in sr.results:
-                if r.get("valid"):
-                    continue
-                p = Path(r.get("path") or r.get("filename", ""))
+                # Rapor yolu çözümle
+                report_path = Path(_report_path(WATERMARK_REPORT_NAME, str(input_dir)))
                 try:
-                    subdir = str(p.parent.relative_to(input_dir.resolve()))
-                except (ValueError, OSError):
-                    subdir = str(p.parent.name)
-                dets = r.get("detections") or []
-                max_conf = (
-                    max((d.get("confidence", 0) for d in dets), default=0.0)
-                    if dets else 0.0
-                )
-                rows.append({
-                    "filename": p.name,
-                    "subdir": subdir if subdir != "." else "—",
-                    "count": r.get("detection_count", 0),
-                    "max_conf": f"{max_conf:.2f}" if max_conf else "—",
-                })
-            wm_table.rows = rows
+                    watermark_write_report(
+                        report_path,
+                        scan_result=sr, action_result=ar,
+                        recursive=bool(recursive_check.value),
+                    )
+                except Exception as e:  # noqa: BLE001
+                    ui.notify(f"Rapor yazma hatası: {e}", type="negative")
 
-            STATE.last_report_paths[4] = str(report_path)
-            undo_input.value = str(report_path)
-            ui.notify(
-                f"Watermark scan: {sr.invalid_count}/{sr.total_scanned} watermark'lı{mode}",
-                type="positive",
-            )
-            STATE.notify_change()
+                progress_bar.visible = False
+                run_btn.enable()
+                mode = " (DRY-RUN)" if dryrun_check.value else ""
+                summary_label.text = (
+                    f"Total: {sr.total_scanned}, Watermark: {sr.invalid_count}, "
+                    f"Action: {ar.action}{mode}"
+                )
+                total_card.text = str(sr.total_scanned)
+                clean_card.text = str(sr.valid_count)
+                wm_card.text = str(sr.invalid_count)
+
+                # Invalid table
+                rows = []
+                for r in sr.results:
+                    if r.get("valid"):
+                        continue
+                    p = Path(r.get("path") or r.get("filename", ""))
+                    try:
+                        subdir = str(p.parent.relative_to(input_dir.resolve()))
+                    except (ValueError, OSError):
+                        subdir = str(p.parent.name)
+                    dets = r.get("detections") or []
+                    max_conf = (
+                        max((d.get("confidence", 0) for d in dets), default=0.0)
+                        if dets else 0.0
+                    )
+                    rows.append({
+                        "filename": p.name,
+                        "subdir": subdir if subdir != "." else "—",
+                        "count": r.get("detection_count", 0),
+                        "max_conf": f"{max_conf:.2f}" if max_conf else "—",
+                    })
+                wm_table.rows = rows
+
+                STATE.last_report_paths[4] = str(report_path)
+                undo_input.value = str(report_path)
+                ui.notify(
+                    f"Watermark scan: {sr.invalid_count}/{sr.total_scanned} watermark'lı{mode}",
+                    type="positive",
+                )
+                STATE.notify_change()
+
+            # Kalıcı silme → önce onay dialog'u (diğer sekmelerle aynı patern).
+            # "Onaysız" işaretliyse dialog atlanır, doğrudan silinir.
+            if action == "delete" and not dryrun_check.value and not yes_check.value:
+                progress_bar.visible = False
+                run_btn.enable()
+                _confirm_delete_dialog(sr.invalid_count, on_confirm=_apply_and_finish)
+                return
+            _apply_and_finish()
 
         def _do_undo():
             rp = (undo_input.value or "").strip()
