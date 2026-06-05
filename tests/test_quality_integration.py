@@ -181,7 +181,7 @@ def test_step03_dry_run_no_filesystem_change(tmp_path):
 
 
 def test_step03_output_consumable_as_resize_input(tmp_path):
-    """03 sonrası output → 05 image-resizer girdisi."""
+    """03 sonrası output → 05 media-resizer girdisi."""
     dataset = tmp_path / "ds"
     _make_quality_dataset(dataset)
     rejected = tmp_path / "rej"

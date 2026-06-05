@@ -1,6 +1,6 @@
 """
 UI smoke testi — ui.py modülü import edilebiliyor mu, gerekli yardımcılar
-çalışıyor mu? Gradio/NiceGUI sunucusunu ayağa kaldırmıyor (HTTP testi yok),
+çalışıyor mu? NiceGUI sunucusunu ayağa kaldırmıyor (HTTP testi yok),
 sadece kod yolunun sağlamlığını doğruluyor.
 
 NiceGUI kurulu değilse bu modül atlanır (ui dependency-group opsiyonel).
