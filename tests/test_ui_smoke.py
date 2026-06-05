@@ -82,7 +82,7 @@ def test_humanize_bytes_progresses_units():
 def test_pipeline_state_validity(tmp_path):
     """PipelineState.is_valid_dataset path doğrulaması."""
     import ui
-    s = ui.PipelineState(dataset_path="")
+    s = ui.PipelineState(base_path="")
     assert not s.is_valid_dataset()
     s.dataset_path = "/nonexistent"
     assert not s.is_valid_dataset()
@@ -205,7 +205,7 @@ def test_all_wired_builders_callable():
 def test_register_output_noop_when_same_as_dataset_path(tmp_path):
     """Output dataset_path ile aynı → register edilmez (no-op)."""
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     s.register_output(0, str(tmp_path))
     assert s.available_outputs == {}
 
@@ -213,7 +213,7 @@ def test_register_output_noop_when_same_as_dataset_path(tmp_path):
 def test_register_output_noop_on_empty_output(tmp_path):
     """Boş string output → register edilmez."""
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     s.register_output(0, "")
     assert s.available_outputs == {}
 
@@ -221,7 +221,7 @@ def test_register_output_noop_on_empty_output(tmp_path):
 def test_register_output_normalizes_path(tmp_path):
     """Output path resolve edilerek saklanır (relative/symlink fark eder)."""
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     out = tmp_path / "other_out"
     out.mkdir()
     s.register_output(0, str(out))
@@ -230,14 +230,14 @@ def test_register_output_normalizes_path(tmp_path):
 
 def test_latest_output_returns_none_when_empty(tmp_path):
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     assert s.latest_output() is None
 
 
 def test_latest_output_picks_max_step_skipping_dismissed(tmp_path):
     """En yüksek step idx kazanır; dismiss edilmiş atlanır."""
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     a = tmp_path / "a"
     a.mkdir()
     b = tmp_path / "b"
@@ -254,7 +254,7 @@ def test_latest_output_picks_max_step_skipping_dismissed(tmp_path):
 def test_register_clears_dismiss_on_reregister(tmp_path):
     """Dismiss edilmiş bir step yeniden register edilirse dismiss temizlenir."""
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     a = tmp_path / "a"
     a.mkdir()
     s.register_output(0, str(a))
@@ -269,7 +269,7 @@ def test_register_clears_dismiss_on_reregister(tmp_path):
 def test_clear_output_removes_and_undismisses(tmp_path):
     """clear_output() undo sonrası çağrılır — output + dismiss temizlenir."""
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     a = tmp_path / "a"
     a.mkdir()
     s.register_output(0, str(a))
@@ -282,7 +282,7 @@ def test_clear_output_removes_and_undismisses(tmp_path):
 def test_switch_to_changes_dataset_path_and_notifies(tmp_path):
     """switch_to() banner Switch butonu için: dataset_path değişir, callback tetiklenir."""
     import ui
-    s = ui.PipelineState(dataset_path=str(tmp_path))
+    s = ui.PipelineState(base_path=str(tmp_path))
     new = tmp_path / "new_root"
     new.mkdir()
     calls = []
