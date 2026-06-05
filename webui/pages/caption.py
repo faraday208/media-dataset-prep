@@ -287,7 +287,6 @@ def build_caption_tab():
         # ============= Action handlers =============
 
         def _do_health_check():
-            d = _input_dir()
             srv = (server_input.value or "").strip()
             if not srv:
                 ui.notify("Server URL gerekli", type="warning")
