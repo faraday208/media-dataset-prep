@@ -15,13 +15,13 @@ state machine, review akışlarında iyileştirme.
 
 | # | Tool | Tool sürümü | Conventions | Meta UI | Notlar |
 |---|---|---|---|---|---|
-| 00 | media-organizer | **v0.5.1** ✓ | ✓ | **wired** ✓ | CLI parity %100; recursive flat/tree, undo + cleanup |
+| 00 | media-organizer | **v0.6.0** ✓ | ✓ | **wired** ✓ | CLI parity %100; recursive flat/tree, undo + cleanup, execute_rename progress_cb |
 | 01 | media-validator | **v0.4.0** ✓ | ✓ | wired ✓ | recursive default True (BC) + tree-preserving move, 45 test |
 | 02 | media-deduplicator | **v1.2.2** ✓ | ✓ | wired ✓ | exact+similar mode, AI-odaklı BPP eşikleri + tree-preserving move, 65 test |
 | 03 | media-quality-checker | **v1.0.1** ✓ | ✓ | wired ✓ | 4 composite check + tree-preserving move, action+undo, 45 test |
 | 04 | media-watermark-detector | **v1.0.1** ✓ | ✓ | **wired** ✓ | YOLOv8 detect + tree-preserving move + invalid table, 34 test |
 | 05 | media-resizer | **v1.0.1** ✓ | ✓ | **wired** ✓ | Lanczos batch (copy/in-place) + dry-run + undo (copy mode), 20 test |
-| 06 | media-captioner | **v1.0.1** ✓ | ✓ | **wired** ✓ | Qwen3-VL 5-pass + JSON→TXT export + undo + caption review editor (görsel + short/medium/long edit + 5-pass structured), 15 test |
+| 06 | media-captioner | **v1.1.0** ✓ | ✓ | **wired** ✓ | Qwen3-VL 5-pass + JSON→TXT export + undo + caption review editor (görsel + short/medium/long edit + 5-pass structured) + process_folder progress_cb/cancel_event, 15 test |
 | 07 | media-golden-set | **v1.0.1** ✓ | ✓ | **wired** ✓ | Quality+caption-aware cherry-pick (recursive + tree-preserving copy) + selection preview + bucket dağılım, 39 test |
 
 ✓ = bitti  ·  ? = denetlenmedi  ·  stub = "coming soon" placeholder  ·  — = bu projede sürüm bilgisi tutulmuyor (tool repo'sundan oku)
@@ -61,12 +61,12 @@ etkilenir, dry-run'sız).
 Workspace member'larının versiyonları meta `docs/roadmap.md`'deki sürüm
 pin listesiyle script ile karşılaştırılsın (CI yardımcısı).
 
-> **Bakım notu (2026-06-05):** İki araçta tag-sonrası feature commit'i var ama
-> sürüm bump'lanmamış (UI async progress desteği için eklendi):
-> - `media-organizer` — `v0.5.1` tag'inden sonra `feat: execute_rename'e progress_cb`
-> - `media-captioner` — `v1.0.1` tag'inden sonra `feat: process_folder'a progress_cb + cancel_event`
+> **Bakım notu (2026-06-05 — ÇÖZÜLDÜ):** İki araçta tag-sonrası feature commit'i
+> sürümlenmemişti (UI async progress desteği için eklenmişti). Minor bump + tag yapıldı:
+> - `media-organizer` — `v0.5.1` → **`v0.6.0`** (`execute_rename` progress_cb)
+> - `media-captioner` — `v1.0.1` → **`v1.1.0`** (`process_folder` progress_cb + cancel_event)
 >
-> İkisi de patch/minor bump + yeni tag bekliyor. Kalan 6 araç HEAD == son tag (temiz).
+> Artık 8/8 araç HEAD == son tag (temiz).
 
 ## v0.1 milestone'ları (tamamlandı — 2026-05-16)
 
@@ -114,6 +114,8 @@ member'ları lokal symlink veya clone üzerinden geliyor. Production deploy'ta
 git tag'leri (`media-organizer@v0.5.0` gibi) referans alınır.
 
 Mevcut tag'ler:
+- `media-organizer/v0.6.0` — execute_rename progress_cb (meta UI async progress/ETA)
+- `media-captioner/v1.1.0` — process_folder progress_cb + cancel_event (meta UI async progress + cancel)
 - `media-organizer/v0.5.1` — tool field + .gitignore conventions fix
 - `media-organizer/v0.5.0` — recursive scan + cleanup
 - `media-validator/v0.3.1` — paket adı validator_core (sys.path collision fix)
