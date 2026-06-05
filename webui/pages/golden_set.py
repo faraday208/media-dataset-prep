@@ -230,8 +230,8 @@ def build_golden_set_tab():
                 ui.notify(f"Apply hatası: {e}", type="negative")
                 return
 
-            # Rapor
-            report_out = Path(_report_path("selection_report.json", str(out_p)))
+            # Rapor PROJE KÖKÜNDE (base_path) — aktif dataset_path/output değil.
+            report_out = Path(_report_path("selection_report.json", STATE.base_path))
             cfg = {
                 "count": count,
                 "distribution": distribution,

@@ -99,11 +99,11 @@ def test_step02_finds_exact_duplicates_via_move(tmp_path):
     assert len(moved) == 2
 
     # Rapor invalid_dir altında
-    assert (rejected / "duplicate_report.json").exists()
+    assert (rejected / "duplicate_exact_report.json").exists()
 
 
 def test_step02_report_provides_undo_contract(tmp_path):
-    """duplicate_report.json undo + downstream review için kontratı sağlıyor."""
+    """duplicate_exact_report.json undo + downstream review için kontratı sağlıyor."""
     dataset = tmp_path / "ds"
     _make_dataset_with_duplicates(dataset)
     rejected = tmp_path / "rej"
@@ -115,7 +115,7 @@ def test_step02_report_provides_undo_contract(tmp_path):
     )
     assert result.returncode == 0
 
-    report = json.loads((rejected / "duplicate_report.json").read_text())
+    report = json.loads((rejected / "duplicate_exact_report.json").read_text())
     assert report["tool"] == "media-deduplicator"
     assert report["mode"] == "exact"
     assert report["summary"]["groups"] >= 1
@@ -146,7 +146,7 @@ def test_step02_undo_restores_pipeline_state(tmp_path):
     ).returncode == 0
 
     # Undo
-    assert _run_dedup("--undo", str(rejected / "duplicate_report.json")).returncode == 0
+    assert _run_dedup("--undo", str(rejected / "duplicate_exact_report.json")).returncode == 0
 
     files_after = sorted(p.name for p in dataset.glob("*.jpg"))
     assert files_after == files_before
@@ -169,7 +169,7 @@ def test_step02_dry_run_writes_report_no_filesystem_change(tmp_path):
     # Rejected'a taşınmadı
     assert not list(rejected.glob("*.jpg"))
     # Ama rapor yazıldı
-    assert (rejected / "duplicate_report.json").exists()
+    assert (rejected / "duplicate_exact_report.json").exists()
 
 
 def test_step02_output_consumable_as_quality_input(tmp_path):

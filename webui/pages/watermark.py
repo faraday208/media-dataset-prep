@@ -233,8 +233,8 @@ def build_watermark_tab():
                     dry_run=bool(dryrun_check.value),
                 )
 
-                # Rapor yolu çözümle
-                report_path = Path(_report_path(WATERMARK_REPORT_NAME, str(input_dir)))
+                # Rapor proje kökünde (base_path) — aktif dataset_path/input değil.
+                report_path = Path(_report_path(WATERMARK_REPORT_NAME, STATE.base_path))
                 try:
                     watermark_write_report(
                         report_path,

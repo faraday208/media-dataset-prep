@@ -77,12 +77,15 @@ def _resolve_dataset_relative(value: Optional[str]) -> Optional[str]:
 
 
 def _report_dir_for(base: Optional[str]) -> str:
-    """Tüm stage raporları için ortak 'report/' klasörü — çalışma klasörünün
-    KARDEŞİ (içine değil). Böylece raporlar görsellerle karışmaz ve recursive
-    scan onları yutmaz. base = output/dataset yolu → report = base.parent/'report'.
-    """
-    root = Path(base) if base else Path(STATE.dataset_path or ".")
-    rdir = root.resolve().parent / "report"
+    """Tüm stage raporları PROJE KÖKÜNÜN içindeki ortak 'report/' klasöründe:
+    <base_path>/report. base = proje kökü (STATE.base_path); çağıranlar aktif
+    dataset_path veya output_dir DEĞİL, base_path verir — böylece stage organized/
+    resized üzerinde çalışsa bile rapor tek yerde (proje kökü/report) birikir ve
+    _find_manifest hepsini bulur. Recursive scan report'u atlar (collect_images
+    _EXCLUDED_SCAN_DIRS), içeride güvenli — dataset self-contained (reject ile
+    tutarlı)."""
+    root = Path(base) if base else Path(STATE.base_path or ".")
+    rdir = root.resolve() / "report"
     try:
         rdir.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -153,10 +156,13 @@ def _append_manifest_from_report(idx: int, report_path, output_dir=None, params=
 
 
 def _reject_dir_for(stage: str) -> str:
-    """Reject klasörü çalışma klasörünün KARDEŞİ: <base>/_rejected/<stage> (içine
-    değil). report/ ile aynı disiplin — recursive scan reject'i geri yutmaz."""
-    root = Path(STATE.dataset_path) if STATE.dataset_path else Path(".")
-    return str(root.resolve().parent / "_rejected" / stage)
+    """Reject klasörü PROJE KÖKÜNÜN içinde: <base_path>/_rejected/<stage>.
+    base_path = kullanıcının seçtiği değişmez kök (Pics); dataset_path DEĞİL —
+    o aktif iş klasörüdür (örn. organized) ve stage'den stage'e değişir. Reject
+    hep proje kökünde toplanır. Recursive scan _rejected'ı atlar (collect_images
+    _EXCLUDED_SCAN_DIRS), içeride güvenli — dataset self-contained."""
+    root = Path(STATE.base_path) if STATE.base_path else Path(".")
+    return str(root.resolve() / "_rejected" / stage)
 
 
 def _find_manifest(path: Optional[str]):

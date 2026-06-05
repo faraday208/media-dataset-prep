@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 import asyncio
+import json
 
 from nicegui import ui
 from validator_core.validators.file_validator import FileValidator
@@ -431,7 +432,8 @@ def build_validate_tab():
                     dry_run=dryrun_check.value,
                 )
                 # Rapor
-                report_path = Path(_report_path(VALIDATE_REPORT_NAME, STATE.dataset_path))
+                # Rapor proje kökünde (base_path) — aktif dataset_path değil.
+                report_path = Path(_report_path(VALIDATE_REPORT_NAME, STATE.base_path))
                 _write_report_helper(
                     report_path,
                     summary=summary,
@@ -443,7 +445,24 @@ def build_validate_tab():
                 _safe_set_value(undo_input, str(report_path))
                 STATE.last_report_paths[1] = str(report_path)
                 if not dryrun_check.value:
-                    _append_manifest_from_report(1, report_path)
+                    # params: resume'da config formunu geri yüklemek için reçete
+                    # (organize stage ile simetrik — bkz. _restore_config_from_memory).
+                    _append_manifest_from_report(
+                        1, report_path,
+                        output_dir=invalid_dir_input.value or None,
+                        params={
+                            "recursive": recursive_check.value,
+                            "action": action_select.value,
+                            "invalid_dir": invalid_dir_input.value or None,
+                            "allowed_formats": allowed_formats_input.value,
+                            "min_short_edge": int(min_short_edge.value or 0),
+                            "max_short_edge": int(max_short_edge.value or 8192),
+                            "min_aspect": float(min_aspect.value or 0),
+                            "max_aspect": float(max_aspect.value or 999),
+                            "min_size_kb": float(min_size_kb.value or 0),
+                            "max_size_mb": float(max_size_mb.value or 50),
+                        },
+                    )
 
                 dryrun_tag = " (DRY-RUN)" if dryrun_check.value else ""
                 if action == "move":
@@ -507,6 +526,82 @@ def build_validate_tab():
             except Exception as e:
                 ui.notify(f"{'Undo preview' if dry_run else 'Undo'} hatası: {e}",
                           type="negative")
+
+        # ------ Resume (manifest'ten geri yükleme — organize stage ile simetrik) ------
+        # Header'da dataset seçilince STATE.on_change tetiklenir; manifest zaten
+        # last_report_paths[1] + last_stage_params[1]'i doldurmuş olur. Buradaki
+        # restore'lar "kaldığımız yeri" forma + sonuç paneline taşır.
+
+        def _restore_undo_from_memory():
+            """Hafızadaki validate_report.json yolunu undo alanına doldur (boşsa)."""
+            rp = STATE.last_report_paths.get(1)
+            if rp and not undo_input.value:
+                undo_input.set_value(rp)
+
+        def _maybe_restore_number(widget, default, saved):
+            """Widget hâlâ default'taysa ve kayıtlı değer varsa geri yükle —
+            kullanıcının elle değiştirdiği threshold'u ezmez."""
+            if saved is None:
+                return
+            try:
+                if float(widget.value or 0) == float(default):
+                    widget.set_value(saved)
+            except (TypeError, ValueError):
+                pass
+
+        def _restore_config_from_memory():
+            """Resume: önceki validate reçetesini forma geri yükle — yalnızca alan
+            hâlâ default'taysa (aktif düzeni ezmez). Organize'ın
+            _restore_config_from_memory'si ile simetrik."""
+            prm = STATE.last_stage_params.get(1) or {}
+            if not prm:
+                return
+            if recursive_check.value is True and isinstance(prm.get("recursive"), bool):
+                recursive_check.set_value(prm["recursive"])
+            if action_select.value == "move" and prm.get("action") in {"move", "delete"}:
+                action_select.set_value(prm["action"])
+            # invalid_dir action'dan SONRA — _on_action_change'in doldurduğu default
+            # reject dir'i kayıtlı (custom olabilir) değerle ez.
+            if prm.get("invalid_dir"):
+                invalid_dir_input.set_value(prm["invalid_dir"])
+            if (allowed_formats_input.value or "") == "jpg,jpeg,png,webp" and prm.get(
+                "allowed_formats"
+            ):
+                allowed_formats_input.set_value(prm["allowed_formats"])
+            _maybe_restore_number(min_short_edge, 512, prm.get("min_short_edge"))
+            _maybe_restore_number(max_short_edge, 8192, prm.get("max_short_edge"))
+            _maybe_restore_number(min_aspect, 0.5, prm.get("min_aspect"))
+            _maybe_restore_number(max_aspect, 2.0, prm.get("max_aspect"))
+            _maybe_restore_number(min_size_kb, 100, prm.get("min_size_kb"))
+            _maybe_restore_number(max_size_mb, 50, prm.get("max_size_mb"))
+
+        def _restore_results_from_memory():
+            """Resume: önceki validate raporundan stat kartları + reason kırılımı +
+            tabloyu geri yükle — yeniden tarama YOK. Canlı sonucu ezmez."""
+            rp = STATE.last_report_paths.get(1)
+            if not rp:
+                return
+            if "Henüz validate" not in (summary_label.text or ""):
+                return
+            try:
+                data = json.loads(Path(rp).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return
+            summary = data.get("summary")
+            results = data.get("results")
+            if isinstance(summary, dict) and isinstance(results, list):
+                _populate_results(
+                    results, summary,
+                    action_msg=f"✓ Önceki validate raporu yüklendi:\n{rp}",
+                )
+
+        def _restore_all():
+            _restore_undo_from_memory()
+            _restore_config_from_memory()
+            _restore_results_from_memory()
+
+        STATE.on_change(_restore_all)
+        _restore_all()
 
         run_btn.on("click", on_run)
         undo_preview_btn.on("click", lambda: _run_undo(dry_run=True))
