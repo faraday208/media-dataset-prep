@@ -18,7 +18,8 @@ TOOLS_DIR="$META_DIR/tools"
 
 # Yerel geliştirme modu için tool'ların kardeş klasörleri
 # Her tool kendi başına bağımsız repo (gelecekte github.com/<user>/<repo>)
-LOCAL_BASE="/home/ai/Workspace"
+# Araçlar meta repo'nun kardeşi → konumdan bağımsız (taşımaya dayanıklı)
+LOCAL_BASE="$(dirname "$META_DIR")"
 
 mkdir -p "$TOOLS_DIR"
 
