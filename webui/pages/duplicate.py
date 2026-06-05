@@ -98,7 +98,7 @@ def build_duplicate_tab():
                         "best": "Best (BPP-aware composite)",
                     },
                     label="Keep strategy (default)",
-                    value="first",
+                    value="best",
                 ).props("dense outlined").classes("w-full")
 
                 default_zoom_select = ui.select(
