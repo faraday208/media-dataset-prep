@@ -5,7 +5,7 @@
 # Kullanım:
 #   ./scripts/install-tools.sh           # default: github (clone)
 #   ./scripts/install-tools.sh github    # GitHub'dan clone
-#   ./scripts/install-tools.sh local     # Yerel ai-visual-lab/media-dataset-prep/'tan symlink
+#   ./scripts/install-tools.sh local     # Meta repo'nun kardeş klasörlerinden symlink
 #   ./scripts/install-tools.sh hybrid    # Önce GitHub dene, yoksa yerel symlink
 
 set -euo pipefail

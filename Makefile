@@ -5,7 +5,7 @@ help:
 	@echo ""
 	@echo "Kurulum modları:"
 	@echo "  make install         - PRODUCTION: 7 tool'u GitHub'dan clone'la"
-	@echo "  make install-local   - DEVELOPMENT: Yerel ai-visual-lab/dataset-prep/'tan symlink"
+	@echo "  make install-local   - DEVELOPMENT: Meta repo'nun kardeş klasörlerinden symlink"
 	@echo "  make install-hybrid  - HİBRİT: GitHub varsa clone, yoksa yerelden symlink"
 	@echo ""
 	@echo "Diğer komutlar:"
