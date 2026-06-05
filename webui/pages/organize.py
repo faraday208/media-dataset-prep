@@ -13,6 +13,7 @@ import media_organizer
 
 from webui.state import STATE
 from webui.helpers import (
+    _safe_call,
     _safe_set_value,
     _safe_set_text,
     _safe_set_visible,
@@ -234,9 +235,9 @@ def build_organize_tab():
                     "Henüz preview üretilmedi — sol panelde Dry-run açıkken Organize'a tıkla."
                 ).classes("text-sm text-slate-600 italic mt-1")
 
-                # Stat kartları — Total + sort-time kaynağı kırılımı. EXIF = gerçek
-                # çekim tarihinden sıralandı (ideal); mtime = dosya değişiklik tarihi
-                # fallback'i. Dataset kronolojik sıralama kalitesini bir bakışta verir.
+                # Stat kartları — işlem sonucu: Total / Başarı / Error. Başarı+Error
+                # ancak gerçek Organize (execute) sonrası dolar; dry-run preview'da
+                # "—" kalır (henüz dosya işlenmedi). execute_rename sayaçları döndürür.
                 with ui.row().classes("w-full justify-around mt-2"):
                     with ui.column().classes("items-center gap-0"):
                         total_card = ui.label("—").classes(
@@ -246,17 +247,17 @@ def build_organize_tab():
                             "text-xs uppercase text-slate-500 tracking-wide"
                         )
                     with ui.column().classes("items-center gap-0"):
-                        exif_card = ui.label("—").classes(
+                        ok_card = ui.label("—").classes(
                             "text-3xl font-bold text-green-600"
                         )
-                        ui.label("EXIF").classes(
+                        ui.label("Başarı").classes(
                             "text-xs uppercase text-slate-500 tracking-wide"
                         )
                     with ui.column().classes("items-center gap-0"):
-                        mtime_card = ui.label("—").classes(
-                            "text-3xl font-bold text-amber-600"
+                        err_card = ui.label("—").classes(
+                            "text-3xl font-bold text-red-600"
                         )
-                        ui.label("mtime").classes(
+                        ui.label("Error").classes(
                             "text-xs uppercase text-slate-500 tracking-wide"
                         )
 
@@ -331,14 +332,17 @@ def build_organize_tab():
                 for p in plan
             ]
             preview_table.update()
-            # Stat kartları — sort-time kaynağı kırılımı (EXIF / mtime)
+            # Total = planlanan dosya. Başarı/Error işlem sonucu olduğundan burada
+            # "—"ye sıfırlanır; _set_result_cards (execute/resume sonrası) doldurur.
             total_card.set_text(str(len(plan)))
-            exif_card.set_text(
-                str(sum(1 for p in plan if p.get("time_source") == "exif"))
-            )
-            mtime_card.set_text(
-                str(sum(1 for p in plan if p.get("time_source") == "mtime"))
-            )
+            ok_card.set_text("—")
+            err_card.set_text("—")
+
+        def _set_result_cards(success, error) -> None:
+            """Gerçek Organize (execute) veya resume sonrası başarı/error kartlarını
+            doldur. None → '—' (sonuç bilinmiyor, ör. eski rapor)."""
+            ok_card.set_text("—" if success is None else str(success))
+            err_card.set_text("—" if error is None else str(error))
 
         def _restore_preview_from_memory():
             """Resume: organize zaten yapılmışsa kaydedilmiş rapordan preview
@@ -361,6 +365,8 @@ def build_organize_tab():
             else:
                 count = data.get("total_files")
             prm = STATE.last_stage_params.get(0) or {}
+            # Başarı/Error manifest params'tan (eski raporlarda yoksa "—" kalır)
+            _set_result_cards(prm.get("success"), prm.get("error"))
             parts = []
             if count is not None:
                 parts.append(f"{count} dosya")
@@ -426,13 +432,17 @@ def build_organize_tab():
                     _safe_set_text(progress_label, msg)
 
                 await asyncio.sleep(0)
-                await asyncio.to_thread(
+                result = await asyncio.to_thread(
                     media_organizer.execute_rename,
                     plan,
                     dry_run=False,
                     mode=mode,
                     progress_cb=_cb,
                 )
+                result = result or {}
+                success = result.get("success")
+                error = result.get("error")
+                _safe_call(_set_result_cards, success, error)
 
                 report_path = _report_path("rename_report.json", output_input.value or STATE.dataset_path)
                 _safe_set_text(progress_label, "Rapor yazılıyor…")
@@ -446,7 +456,8 @@ def build_organize_tab():
                     params={"prefix": prefix_input.value,
                             "recursive": recursive_select.value, "mode": mode,
                             "include_ext": include_ext.value,
-                            "output_dir": output_input.value or None},
+                            "output_dir": output_input.value or None,
+                            "success": success, "error": error},
                 )
                 _safe_set_value(undo_input, report_path)
                 _safe_set_text(
