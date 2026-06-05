@@ -29,8 +29,6 @@ def build_golden_set_tab():
     selection stats (avg score, face count, bucket dağılım) + apply
     sonucu (kaç kopyalandı). Tree-preserving copy (recursive aktifken).
     """
-    import json
-
     tab_state: dict = {"last_selection": None}
 
     with ui.column().classes("w-full max-w-screen-xl mx-auto p-6 gap-4"):
@@ -222,7 +220,7 @@ def build_golden_set_tab():
                     dry_run=bool(dryrun_check.value),
                 )
             except FileExistsError as e:
-                progress_label.text = f"Hata: target dolu (force kullan)"
+                progress_label.text = "Hata: target dolu (force kullan)"
                 run_btn.enable()
                 ui.notify(str(e), type="negative")
                 return
