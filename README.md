@@ -101,7 +101,7 @@ pip install uv
 ```bash
 make install          # PRODUCTION: 8 tool'u GitHub'dan clone'la
 # veya
-make install-local    # DEVELOPMENT: /home/ai/Workspace/<tool>'tan symlink
+make install-local    # DEVELOPMENT: meta repo'nun kardeş klasörlerinden symlink
 # veya
 make install-hybrid   # Önce GitHub dene, yoksa yerele düş
 ```
