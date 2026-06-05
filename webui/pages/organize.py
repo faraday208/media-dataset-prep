@@ -234,39 +234,33 @@ def build_organize_tab():
                     "Henüz preview üretilmedi — sol panelde Dry-run açıkken Organize'a tıkla."
                 ).classes("text-sm text-slate-600 italic mt-1")
 
-                def _restore_preview_from_memory():
-                    """Resume: organize zaten yapılmışsa preview alanına '✓ tamamlandı'
-                    özeti bas (yanıltıcı boş-durum yerine). Tam tablo otomatik gelmez."""
-                    rp = STATE.last_report_paths.get(0)
-                    if not rp:
-                        return
-                    cur = summary_label.text or ""
-                    # Gerçek Dry-Run sonucunu EZME — sadece default boş-durumu / kendi özetimizi güncelle
-                    if "Henüz preview" not in cur and not cur.startswith("✓ Organize"):
-                        return
-                    count = None
-                    try:
-                        data = json.loads(Path(rp).read_text(encoding="utf-8"))
-                        count = data.get("total_files")
-                        if count is None and isinstance(data.get("renames"), list):
-                            count = len(data["renames"])
-                    except (OSError, ValueError):
-                        pass
-                    prm = STATE.last_stage_params.get(0) or {}
-                    parts = []
-                    if count is not None:
-                        parts.append(f"{count} dosya")
-                    if prm.get("prefix"):
-                        parts.append(f"prefix={prm['prefix']}")
-                    if prm.get("mode"):
-                        parts.append(f"mode={prm['mode']}")
-                    detail = " · ".join(parts) if parts else "kayıt mevcut"
-                    summary_label.set_text(
-                        f"✓ Organize tamamlandı — {detail}\n"
-                        "(detay tablo için Dry-run açıkken Organize'a basabilirsin)"
-                    )
-                STATE.on_change(_restore_preview_from_memory)
-                _restore_preview_from_memory()
+                # Stat kartları — Total + sort-time kaynağı kırılımı. EXIF = gerçek
+                # çekim tarihinden sıralandı (ideal); mtime = dosya değişiklik tarihi
+                # fallback'i. Dataset kronolojik sıralama kalitesini bir bakışta verir.
+                with ui.row().classes("w-full justify-around mt-2"):
+                    with ui.column().classes("items-center gap-0"):
+                        total_card = ui.label("—").classes(
+                            "text-3xl font-bold text-slate-700"
+                        )
+                        ui.label("Total").classes(
+                            "text-xs uppercase text-slate-500 tracking-wide"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        exif_card = ui.label("—").classes(
+                            "text-3xl font-bold text-green-600"
+                        )
+                        ui.label("EXIF").classes(
+                            "text-xs uppercase text-slate-500 tracking-wide"
+                        )
+                    with ui.column().classes("items-center gap-0"):
+                        mtime_card = ui.label("—").classes(
+                            "text-3xl font-bold text-amber-600"
+                        )
+                        ui.label("mtime").classes(
+                            "text-xs uppercase text-slate-500 tracking-wide"
+                        )
+
+                ui.separator().classes("my-2")
 
                 preview_table = ui.table(
                     columns=[
@@ -325,17 +319,62 @@ def build_organize_tab():
             return plan
 
         def _populate_preview(plan):
+            # .get → hem canlı plan hem kaydedilmiş rapordaki renames için dayanıklı.
             preview_table.rows = [
                 {
-                    "ext": p["extension"],
-                    "old": p["old_filename"],
-                    "new": p["new_filename"],
+                    "ext": p.get("extension", "—"),
+                    "old": p.get("old_filename", "—"),
+                    "new": p.get("new_filename", "—"),
                     "src": p.get("time_source", "—"),
                     "subdir": p.get("subdir", "—"),
                 }
                 for p in plan
             ]
             preview_table.update()
+            # Stat kartları — sort-time kaynağı kırılımı (EXIF / mtime)
+            total_card.set_text(str(len(plan)))
+            exif_card.set_text(
+                str(sum(1 for p in plan if p.get("time_source") == "exif"))
+            )
+            mtime_card.set_text(
+                str(sum(1 for p in plan if p.get("time_source") == "mtime"))
+            )
+
+        def _restore_preview_from_memory():
+            """Resume: organize zaten yapılmışsa kaydedilmiş rapordan preview
+            TABLOSUNU + stat kartlarını + '✓ tamamlandı' özetini (son organize
+            zamanıyla) geri yükle — yeniden tarama YOK. Canlı dry-run sonucunu ezmez."""
+            rp = STATE.last_report_paths.get(0)
+            if not rp:
+                return
+            cur = summary_label.text or ""
+            if "Henüz preview" not in cur and not cur.startswith("✓ Organize"):
+                return
+            try:
+                data = json.loads(Path(rp).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return
+            renames = data.get("renames")
+            if isinstance(renames, list) and renames:
+                _populate_preview(renames)  # tablo + kartları kaydedilmiş rapordan doldur
+                count = len(renames)
+            else:
+                count = data.get("total_files")
+            prm = STATE.last_stage_params.get(0) or {}
+            parts = []
+            if count is not None:
+                parts.append(f"{count} dosya")
+            if prm.get("prefix"):
+                parts.append(f"prefix={prm['prefix']}")
+            if prm.get("mode"):
+                parts.append(f"mode={prm['mode']}")
+            detail = " · ".join(parts) if parts else "kayıt mevcut"
+            ts = data.get("timestamp")
+            when = f"\nSon organize: {str(ts)[:19].replace('T', ' ')}" if ts else ""
+            summary_label.set_text(f"✓ Organize tamamlandı — {detail}{when}")
+
+        STATE.on_change(_restore_preview_from_memory)
+        _restore_preview_from_memory()
 
         def _summarize_plan(plan, *, executed: bool, mode: str = "") -> str:
             """Plan üzerine özet — dosya sayısı + sort-time kaynak dağılımı."""
