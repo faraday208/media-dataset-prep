@@ -4,7 +4,7 @@ help:
 	@echo "dataset-prep — Meta-orchestrator for AI image dataset pipeline"
 	@echo ""
 	@echo "Kurulum modları:"
-	@echo "  make install         - PRODUCTION: 7 tool'u GitHub'dan clone'la"
+	@echo "  make install         - PRODUCTION: 8 tool'u GitHub'dan clone'la"
 	@echo "  make install-local   - DEVELOPMENT: Meta repo'nun kardeş klasörlerinden symlink"
 	@echo "  make install-hybrid  - HİBRİT: GitHub varsa clone, yoksa yerelden symlink"
 	@echo ""

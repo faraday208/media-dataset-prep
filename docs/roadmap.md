@@ -11,7 +11,7 @@ sürümlenir; meta UI sadece "wire-up" sorumluluğu taşır (review/orchestrate)
 banner, sample dataset üretici. Sıradaki: v0.2 — state persistence, pipeline
 state machine, review akışlarında iyileştirme.
 
-## Durum tablosu (2026-05-16)
+## Durum tablosu (2026-06-05 doğrulandı)
 
 | # | Tool | Tool sürümü | Conventions | Meta UI | Notlar |
 |---|---|---|---|---|---|
@@ -60,6 +60,13 @@ etkilenir, dry-run'sız).
 ### 6. **Tool repo'larında pyproject sync**
 Workspace member'larının versiyonları meta `docs/roadmap.md`'deki sürüm
 pin listesiyle script ile karşılaştırılsın (CI yardımcısı).
+
+> **Bakım notu (2026-06-05):** İki araçta tag-sonrası feature commit'i var ama
+> sürüm bump'lanmamış (UI async progress desteği için eklendi):
+> - `media-organizer` — `v0.5.1` tag'inden sonra `feat: execute_rename'e progress_cb`
+> - `media-captioner` — `v1.0.1` tag'inden sonra `feat: process_folder'a progress_cb + cancel_event`
+>
+> İkisi de patch/minor bump + yeni tag bekliyor. Kalan 6 araç HEAD == son tag (temiz).
 
 ## v0.1 milestone'ları (tamamlandı — 2026-05-16)
 
