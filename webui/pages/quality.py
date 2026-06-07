@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 import asyncio
+import html
 
 from nicegui import ui
 from quality_core import (  # noqa: E402
@@ -464,7 +465,13 @@ def build_quality_tab():
                                      "max-width: none; max-height: none; display: block; margin: auto;")
                             zoom_btn.set_text(f"{int(z*100)}%")
                         counter_label.set_text(f"{lb['idx']+1} / {len(invalid)}")
-                        img_html.set_content(f'<img src="{url}" style="{style}">')
+                        # Filename kullanıcı-kontrollü olabilir (indirilen dosya) —
+                        # raw HTML attribute injection / stored XSS'i escape ile önle.
+                        safe_url = html.escape(url, quote=True)
+                        safe_style = html.escape(style, quote=True)
+                        img_html.set_content(
+                            f'<img src="{safe_url}" style="{safe_style}">'
+                        )
 
                     def _step(d):
                         lb["idx"] = (lb["idx"] + d) % len(invalid)
