@@ -20,13 +20,18 @@ from webui.helpers import (
     _report_path,
     _append_manifest_from_report,
     _reject_dir_for,
+    _path_to_url,
+    _aspect_label,
+    _bpp_label,
 )
 from webui.browse import _open_browse_dialog
 
 
 def build_quality_tab():
     """03 — Quality: 4 metric (blur/brightness/contrast/bpp) + composite scan
-    + action (move/delete) + undo. Validator pattern'i form-only."""
+    + action (move/delete) + undo. Tablo + thumbnail gallery + lightbox."""
+    # Tab-local — lightbox carousel invalid'ler arasında gezsin diye saklanır
+    q_state: dict = {"invalid": []}
     with ui.column().classes("w-full max-w-screen-xl mx-auto p-6 gap-4"):
         ui.label("03 — Quality").classes("text-2xl font-semibold")
         ui.label(
@@ -88,9 +93,24 @@ def build_quality_tab():
                         ui.label("Blur (Laplacian variance — düşük=bulanık)").classes(
                             "text-xs text-slate-500"
                         )
-                        blur_threshold = ui.number(
-                            "Min blur score", value=100, min=0, step=10,
-                        ).props("dense outlined")
+                        with ui.grid(columns="1fr 1fr").classes("w-full gap-3"):
+                            blur_threshold = ui.number(
+                                "Min blur score", value=100, min=0, step=10,
+                            ).props("dense outlined")
+                            blur_method_select = ui.select(
+                                {
+                                    "tile": "Tile (en keskin bölge)",
+                                    "global": "Global (tüm görsel)",
+                                },
+                                label="Blur yöntemi",
+                                value="tile",
+                            ).props("dense outlined").tooltip(
+                                "Tile (önerilen): görseli grid'e böler, en keskin "
+                                "bölgeyi baz alır — bokeh/DoF arkaplan keskin özneyi "
+                                "'blurry' damgalamaz.\n"
+                                "Global: tüm görselin ortalaması — bulanık arkaplan "
+                                "skoru düşürür (bokeh portreleri yanlış eleyebilir)."
+                            )
 
                         ui.label("Brightness (mean pixel 0-255)").classes(
                             "text-xs text-slate-500 mt-2"
@@ -197,12 +217,23 @@ def build_quality_tab():
                     pagination=10,
                 ).classes("w-full mt-1")
 
+                ui.separator().classes("my-2")
+                ui.label("Görsel önizleme (invalid)").classes(
+                    "text-xs uppercase text-slate-500 tracking-wide"
+                )
+                gallery_panel = ui.column().classes("w-full gap-2 mt-1")
+                with gallery_panel:
+                    ui.label("Run sonrası düşük-quality görseller burada gösterilir.").classes(
+                        "text-sm text-slate-500 italic"
+                    )
+
         # ------ Action handlers ------
 
         def _build_config() -> dict:
             return {
                 "quality": {
                     "blur_threshold": float(blur_threshold.value or 100),
+                    "blur_method": blur_method_select.value,
                     "brightness": {
                         "min": float(min_brightness.value or 30),
                         "max": float(max_brightness.value or 225),
@@ -282,6 +313,205 @@ def build_quality_tab():
                     type="warning", timeout=8000,
                 )
 
+        def _metric_parts(r: dict) -> str:
+            parts = []
+            if r.get("blur_score") is not None:
+                parts.append(f"blur {_fmt(r['blur_score'])}")
+            if r.get("brightness_score") is not None:
+                parts.append(f"br {_fmt(r['brightness_score'])}")
+            if r.get("contrast_score") is not None:
+                parts.append(f"ct {_fmt(r['contrast_score'])}")
+            if r.get("bpp_score") is not None:
+                parts.append(f"bpp {_fmt(r['bpp_score'])}")
+            return " · ".join(parts)
+
+        def _refresh_gallery():
+            gallery_panel.clear()
+            invalid = q_state["invalid"]
+            if not invalid:
+                with gallery_panel:
+                    ui.label("Düşük-quality görsel yok.").classes(
+                        "text-sm text-slate-500 italic"
+                    )
+                return
+            with gallery_panel:
+                ui.label(
+                    f"{len(invalid)} düşük-quality görsel — büyütmek için tıkla"
+                ).classes("text-xs text-slate-500")
+                with ui.grid(columns="repeat(4, 1fr)").classes("w-full gap-3"):
+                    for i, r in enumerate(invalid):
+                        path = r.get("path", "")
+                        with ui.column().classes(
+                            "p-2 rounded border border-slate-200 gap-1"
+                        ):
+                            try:
+                                img = ui.image(_path_to_url(path)).classes(
+                                    "w-full h-40 object-contain bg-slate-100 "
+                                    "cursor-pointer hover:opacity-90 transition"
+                                )
+                                img.on("click", lambda _e, k=i: _open_lightbox(k))
+                                img.tooltip("Büyütmek için tıkla")
+                            except Exception:
+                                ui.label("(önizleme yok)").classes(
+                                    "text-xs text-slate-400"
+                                )
+                            ui.label(Path(path).name).classes(
+                                "text-xs font-mono truncate"
+                            ).tooltip(path)
+                            ui.label(r.get("reason", "")).classes(
+                                "text-xs text-red-600 truncate"
+                            ).tooltip(r.get("reason", ""))
+                            ui.label(_metric_parts(r)).classes(
+                                "text-xs text-slate-600 font-mono"
+                            )
+
+        def _open_lightbox(start_idx: int):
+            """Tam ekran lightbox + carousel (invalid'ler arası ←/→) + zoom.
+            Duplicate sayfasının lightbox'ından uyarlandı."""
+            invalid = q_state["invalid"]
+            if not invalid:
+                return
+            lb = {"idx": max(0, min(start_idx, len(invalid) - 1)), "zoom": "fit"}
+            ZOOM_LEVELS = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0]
+
+            with ui.dialog().props("maximized") as dlg, ui.card().classes(
+                "w-full h-screen p-0 bg-black overflow-hidden"
+            ):
+                with ui.column().classes(
+                    "w-full h-full overflow-auto relative bg-black "
+                    "items-center justify-center"
+                ):
+                    img_html = ui.html("")
+                    with ui.row().classes(
+                        "absolute top-2 left-2 right-2 items-center gap-2 z-10 flex-wrap"
+                    ):
+                        title_label = ui.label("").classes(
+                            "text-white text-sm bg-black/60 px-3 py-1 rounded font-mono"
+                        )
+                        reason_label = ui.label("").classes(
+                            "text-white text-xs bg-red-600/80 px-2 py-1 rounded"
+                        )
+                        metric_label = ui.label("").classes(
+                            "text-white text-xs bg-black/60 px-2 py-1 rounded font-mono"
+                        )
+                        bpp_label_w = ui.label("").classes(
+                            "text-xs px-2 py-1 rounded bg-black/60"
+                        )
+                        ui.space()
+                        with ui.row().classes("items-center gap-1 bg-black/60 rounded px-1"):
+                            ui.button(icon="remove").props(
+                                "flat dense color=white size=sm"
+                            ).on("click", lambda: _zoom_step(-1))
+                            zoom_btn = ui.button("Fit").props(
+                                "flat dense color=white size=sm no-caps"
+                            )
+                            zoom_btn.on("click", lambda: _zoom_toggle())
+                            ui.button(icon="add").props(
+                                "flat dense color=white size=sm"
+                            ).on("click", lambda: _zoom_step(1))
+                        ui.button(icon="close", on_click=dlg.close).props(
+                            "flat round color=white"
+                        ).tooltip("Kapat (Esc)")
+
+                    if len(invalid) > 1:
+                        ui.button(icon="chevron_left").props(
+                            "fab-mini color=white text-color=black"
+                        ).classes(
+                            "absolute left-4 top-1/2 -translate-y-1/2 z-10 opacity-80"
+                        ).on("click", lambda: _step(-1))
+                        ui.button(icon="chevron_right").props(
+                            "fab-mini color=white text-color=black"
+                        ).classes(
+                            "absolute right-4 top-1/2 -translate-y-1/2 z-10 opacity-80"
+                        ).on("click", lambda: _step(1))
+
+                    with ui.row().classes(
+                        "absolute bottom-2 left-1/2 -translate-x-1/2 items-center gap-2 z-10"
+                    ):
+                        counter_label = ui.label("").classes(
+                            "text-white text-sm bg-black/60 px-3 py-1 rounded font-mono"
+                        )
+                        hint = (["← →"] if len(invalid) > 1 else []) + ["+ −", "0=Fit", "1=100%"]
+                        ui.label(" · ".join(hint)).classes(
+                            "text-white text-xs bg-black/40 px-2 py-1 rounded"
+                        )
+
+                    def _render():
+                        r = invalid[lb["idx"]]
+                        path = r.get("path", "")
+                        url = _path_to_url(path)
+                        w, h = r.get("width", 0), r.get("height", 0)
+                        sz = r.get("size_bytes", 0)
+                        title_label.set_text(Path(path).name)
+                        reason_label.set_text(r.get("reason", ""))
+                        metric_label.set_text(_metric_parts(r))
+                        bpp_info = _bpp_label(w, h, sz)
+                        if bpp_info:
+                            bt, bc = bpp_info
+                            bpp_label_w.set_text(bt)
+                            bpp_label_w.classes(
+                                replace=f"{bc} bg-white/90 text-xs px-2 py-1 rounded font-mono font-semibold"
+                            )
+                        else:
+                            bpp_label_w.set_text("")
+                        z = lb["zoom"]
+                        if z == "fit" or not (w and h):
+                            style = ("max-width: 100vw; max-height: 100vh; width: auto; "
+                                     "height: auto; object-fit: contain; display: block; margin: auto;")
+                            zoom_btn.set_text("Fit")
+                        else:
+                            style = (f"width: {int(w*z)}px; height: {int(h*z)}px; "
+                                     "max-width: none; max-height: none; display: block; margin: auto;")
+                            zoom_btn.set_text(f"{int(z*100)}%")
+                        counter_label.set_text(f"{lb['idx']+1} / {len(invalid)}")
+                        img_html.set_content(f'<img src="{url}" style="{style}">')
+
+                    def _step(d):
+                        lb["idx"] = (lb["idx"] + d) % len(invalid)
+                        _render()
+
+                    def _zoom_step(d):
+                        z = lb["zoom"]
+                        if z == "fit":
+                            lb["zoom"] = 1.0 if d > 0 else "fit"
+                        else:
+                            try:
+                                i = ZOOM_LEVELS.index(z)
+                            except ValueError:
+                                i = min(range(len(ZOOM_LEVELS)),
+                                        key=lambda k: abs(ZOOM_LEVELS[k] - z))
+                            lb["zoom"] = ZOOM_LEVELS[max(0, min(len(ZOOM_LEVELS)-1, i + d))]
+                        _render()
+
+                    def _zoom_toggle():
+                        lb["zoom"] = 1.0 if lb["zoom"] == "fit" else "fit"
+                        _render()
+
+                    def _zoom_set(v):
+                        lb["zoom"] = v
+                        _render()
+
+                    def _on_key(e):
+                        if not e.action.keydown:
+                            return
+                        if e.key.arrow_left:
+                            _step(-1)
+                        elif e.key.arrow_right:
+                            _step(1)
+                        elif str(e.key) in {"+", "="}:
+                            _zoom_step(1)
+                        elif str(e.key) == "-":
+                            _zoom_step(-1)
+                        elif str(e.key) == "0":
+                            _zoom_set("fit")
+                        elif str(e.key) == "1":
+                            _zoom_set(1.0)
+
+                    kb = ui.keyboard(on_key=_on_key, active=True)
+                    dlg.on("hide", lambda: setattr(kb, "active", False))
+                    _render()
+            dlg.open()
+
         def _populate_results(sr, action_msg: str = ""):
             total_card.set_text(str(sr.total_scanned))
             valid_card.set_text(str(sr.valid_count))
@@ -322,6 +552,10 @@ def build_quality_tab():
                 for r in sr.results if not r.get("valid")
             ]
             invalid_table.update()
+
+            # Thumbnail gallery — invalid görseller (lightbox carousel için sakla)
+            q_state["invalid"] = [r for r in sr.results if not r.get("valid")]
+            _refresh_gallery()
 
             verb = "Quality check tamam"
             summary_label.set_text(
