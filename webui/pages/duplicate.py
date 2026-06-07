@@ -837,11 +837,12 @@ def build_duplicate_tab():
                 _safe_set_value(undo_input, str(report_path))
                 STATE.last_report_paths[2] = str(report_path)
                 if action_select.value != "none" and not dryrun_check.value:
-                    # params: resume'da config formunu geri yüklemek için reçete
-                    # (organize/validate stage ile simetrik — bkz. _restore_config).
+                    # params: resume'da config formunu geri yüklemek için reçete.
+                    # output_dir VERİLMEZ — duplicate reject-only, çalışma klasörünü
+                    # değiştirmez (kept dosyalar kaynakta kalır). output_dir=reject
+                    # verilirse dataset_path reject'e kayardı (_resolve_active).
                     _append_manifest_from_report(
                         2, report_path,
-                        output_dir=invalid_dir_input.value or None,
                         params={
                             "mode": sr.mode,
                             "threshold": cfg["threshold"],

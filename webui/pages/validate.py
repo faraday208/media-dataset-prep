@@ -445,11 +445,12 @@ def build_validate_tab():
                 _safe_set_value(undo_input, str(report_path))
                 STATE.last_report_paths[1] = str(report_path)
                 if not dryrun_check.value:
-                    # params: resume'da config formunu geri yüklemek için reçete
-                    # (organize stage ile simetrik — bkz. _restore_config_from_memory).
+                    # params: resume'da config formunu geri yüklemek için reçete.
+                    # output_dir VERİLMEZ — validate reject-only, çalışma klasörünü
+                    # değiştirmez (valid dosyalar kaynakta kalır). output_dir=reject
+                    # verilirse dataset_path reject'e kayardı (_resolve_active).
                     _append_manifest_from_report(
                         1, report_path,
-                        output_dir=invalid_dir_input.value or None,
                         params={
                             "recursive": recursive_check.value,
                             "action": action_select.value,
