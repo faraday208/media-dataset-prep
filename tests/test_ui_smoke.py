@@ -145,6 +145,34 @@ def test_reject_uses_project_root_not_active_dataset(tmp_path):
     assert "organized" not in reject
 
 
+def test_reject_only_stage_does_not_shift_dataset(tmp_path):
+    """Reject-only stage (validate/duplicate) manifest'e output_dir YAZMAZ —
+    dataset_path organize çıktısında (organized) kalır, reject'e kaymaz.
+    (Regresyon: validate output_dir=reject yazınca sonraki adım boş reject'i
+    dataset olarak alıyordu.)"""
+    import json
+    from pathlib import Path
+    import ui
+    pics = tmp_path / "Pics"
+    organized = pics / "organized"
+    organized.mkdir(parents=True)
+    (pics / "_rejected" / "01-validate").mkdir(parents=True)
+    ui.STATE.base_path = str(pics)
+    ui.STATE.last_report_paths.clear()
+    ui.STATE.last_stage_params.clear()
+    # organize: output_dir=organized (çalışma klasörünü değiştirir)
+    r0 = ui._report_path("rename_report.json", str(pics))
+    Path(r0).write_text(json.dumps({"tool": "x", "renames": []}))
+    ui._append_manifest_from_report(0, r0, output_dir=str(organized), params={})
+    # validate: output_dir YOK (reject-only), yalnızca params
+    r1 = ui._report_path("validate_report.json", str(pics))
+    Path(r1).write_text(json.dumps({"tool": "x", "summary": {}}))
+    ui._append_manifest_from_report(1, r1, params={"action": "move"})
+    # dataset_path organized'da kalmalı — reject'e KAYMAMALI
+    assert "organized" in ui.STATE.dataset_path
+    assert "_rejected" not in ui.STATE.dataset_path
+
+
 # ---------- _aspect_label ----------
 
 def test_aspect_label_common_ratios():
