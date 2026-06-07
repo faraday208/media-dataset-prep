@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 import asyncio
+import html
 import json
 
 from nicegui import ui
@@ -550,8 +551,12 @@ def build_duplicate_tab():
                         counter_label.set_text(
                             f"{lb_state['idx'] + 1} / {len(files)}"
                         )
+                        # Filename kullanıcı-kontrollü olabilir (indirilen dosya) —
+                        # raw HTML attribute injection / stored XSS'i escape ile önle.
+                        safe_url = html.escape(url, quote=True)
+                        safe_style = html.escape(img_style, quote=True)
                         img_html.set_content(
-                            f'<img src="{url}" style="{img_style}">'
+                            f'<img src="{safe_url}" style="{safe_style}">'
                         )
 
                     def _lb_step(delta: int):
