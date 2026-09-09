@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: uv kur
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+
+      # Meta repo tek başına kurulamaz: pyproject 8 tool'u workspace üyesi
+      # olarak bekliyor, tools/ ise gitignored. Testlerden önce doldurulmalı.
+      - name: Pipeline tool'larını bağla
+        run: ./scripts/install-tools.sh github
+
+      - name: Tool sağlık kontrolü
+        run: ./scripts/check-tools.sh
+
+      - name: Testleri koş
+        run: uv run --python 3.12 --group dev --group ui pytest -q
