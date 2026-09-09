@@ -32,14 +32,20 @@ echo ""
 echo "--- Python import kontrolü ---"
 declare -A MODULES=(
   ["00-organize"]="media_organizer"
-  ["01-validate"]="src.validators.file_validator"
-  ["02-duplicate"]="core"
-  ["03-quality"]="src.checkers"
-  ["05-resize"]="image_resizer"
+  ["01-validate"]="validator_core"
+  ["02-duplicate"]="dedup_core"
+  ["03-quality"]="quality_core"
+  ["04-watermark"]="watermark_core"
+  ["05-resize"]="resize_core"
+  ["06-caption"]="caption_core"
+  ["07-golden-set"]="goldenset_core"
 )
 
+# Associative array sırasız gezilir; pipeline sırası okunabilir çıktı için sabitlenir
+ORDER=(00-organize 01-validate 02-duplicate 03-quality 04-watermark 05-resize 06-caption 07-golden-set)
+
 cd "$META_DIR"
-for name in "${!MODULES[@]}"; do
+for name in "${ORDER[@]}"; do
   module="${MODULES[$name]}"
   tool_path="$TOOLS_DIR/$name"
   if [ ! -d "$tool_path" ]; then
