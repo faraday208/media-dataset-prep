@@ -4,6 +4,7 @@
 > Ham görselleri AI eğitimi için hazır hale getiren modüler araç ekosistemi —
 > tek venv, tek UI, bağımsız tool'lar.
 
+[![tests](https://github.com/faraday208/media-dataset-prep/actions/workflows/tests.yml/badge.svg)](https://github.com/faraday208/media-dataset-prep/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/built%20with-uv-261230)](https://github.com/astral-sh/uv)
