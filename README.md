@@ -308,6 +308,14 @@ Tool-içi unit testler her tool repo'sunda kendi `tests/` altında (~300+ test).
 
 ---
 
+## 🏷️ Sürüm
+
+**v0.1.0** — meta-orkestratörün ilk sürümü: 8 tool'u tek uv workspace'inde koordine eden pipeline, NiceGUI human-in-the-loop review arayüzü, `install-tools.sh` / `check-tools.sh` / `update-tools.sh` yönetim script'leri.
+
+Tool'ların kendi sürümleri bağımsız ilerler; her birinin sürüm geçmişi kendi repo'sunun README'sinde.
+
+---
+
 ## 📜 Lisans
 
 [MIT](LICENSE) — Özgürce kullan, fork et, dağıt.
