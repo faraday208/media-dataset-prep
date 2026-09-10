@@ -12,6 +12,29 @@
 
 ---
 
+## English
+
+**What it does.** Meta-orchestrator for an eight-step AI image dataset preparation pipeline: organize → validate → deduplicate → quality → watermark → resize → caption → golden set. Each step lives in its own repository and is coordinated through a single uv workspace; a NiceGUI front-end provides human-in-the-loop review between stages.
+
+**Install**
+
+```bash
+git clone https://github.com/faraday208/media-dataset-prep
+cd media-dataset-prep
+make install          # clones the 8 tools from GitHub
+uv sync
+```
+
+**Basic usage**
+
+```bash
+uv run --group ui python ui.py   # http://localhost:8200
+```
+
+Each tool is independently usable — see the eight repositories listed below. The detailed documentation below is in Turkish.
+
+---
+
 ## 🎯 Bu Repo Nedir?
 
 **media-dataset-prep**, AI görsel modelleri (LoRA, fine-tune, vb.) için dataset
